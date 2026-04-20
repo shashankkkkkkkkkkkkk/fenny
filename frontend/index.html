@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmileCare AI Receptionist</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body data-theme="dark">
+  <div class="bg-grid"></div>
+  <div class="app-shell">
+    <aside class="sidebar glass">
+      <div class="brand">
+        <div class="brand-logo">✦</div>
+        <div>
+          <div class="brand-title">SmileCare</div>
+          <div class="brand-sub">AI RECEPTIONIST</div>
+        </div>
+      </div>
+      <nav class="nav" id="nav">
+        <button class="nav-item active" data-page="overview">🏠 Overview</button>
+        <button class="nav-item" data-page="crm">👥 CRM</button>
+        <button class="nav-item" data-page="analytics">📈 Analytics</button>
+        <button class="nav-item" data-page="calendar">📅 Calendar</button>
+        <button class="nav-item" data-page="patients">🧾 Patients</button>
+      </nav>
+      <div class="sidebar-footer">
+        <span class="dot"></span> AI Online
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar glass">
+        <h1 id="page-title">🏠 Overview</h1>
+        <div class="top-actions">
+          <span class="pill" id="active-calls-pill">0 Active Calls</span>
+          <button id="theme-toggle" class="theme-toggle-btn" aria-label="Toggle theme">
+            <span id="theme-icon">🌙</span>
+          </button>
+        </div>
+      </header>
+
+      <section id="page-overview" class="page active">
+        <div class="kpi-grid">
+          <article class="kpi-card glass"><div class="kpi-label">Calls Today</div><div class="kpi-value" id="kpi-calls">0</div></article>
+          <article class="kpi-card glass"><div class="kpi-label">Appointments</div><div class="kpi-value" id="kpi-bookings">0</div></article>
+          <article class="kpi-card glass"><div class="kpi-label">Patients</div><div class="kpi-value" id="kpi-patients">0</div></article>
+          <article class="kpi-card glass"><div class="kpi-label">Booking Rate</div><div class="kpi-value" id="kpi-rate">0%</div></article>
+        </div>
+
+        <div class="hero glass">
+          <div class="hero-badge">Live Activity Monitor</div>
+          <p id="hero-text">Agent is taking your calls...</p>
+          <div class="voice-orb-wrap" aria-hidden="true">
+            <div class="voice-orb">
+              <span class="voice-core"></span>
+              <span class="voice-ring voice-ring-1"></span>
+              <span class="voice-ring voice-ring-2"></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="split">
+          <article class="panel glass">
+            <div class="panel-head"><h3>Upcoming Appointments</h3></div>
+            <table class="table">
+              <thead><tr><th>Patient</th><th>Time</th><th>Status</th></tr></thead>
+              <tbody id="overview-appointments"></tbody>
+            </table>
+          </article>
+          <article class="panel glass">
+            <div class="panel-head"><h3>Recent Patients</h3></div>
+            <div id="overview-patients" class="list"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="page-crm" class="page">
+        <div class="crm-grid">
+        <article class="panel glass">
+          <div class="panel-head">
+            <h3>CRM Pipeline</h3>
+            <input id="crm-search" class="input" placeholder="Search by name or phone">
+          </div>
+          <table class="table">
+            <thead><tr><th>Name</th><th>Phone</th><th>Total Calls</th><th>Last Seen</th><th>Status</th></tr></thead>
+            <tbody id="crm-body"></tbody>
+          </table>
+        </article>
+        <article class="panel glass" id="crm-details-panel">
+          <div class="panel-head"><h3>Caller Insights</h3></div>
+          <div id="crm-details" class="crm-details-empty">Select a person in CRM Pipeline to see call purpose and summaries.</div>
+        </article>
+        </div>
+      </section>
+
+      <section id="page-analytics" class="page">
+        <div class="kpi-grid">
+          <article class="kpi-card glass"><div class="kpi-label">Connect Rate</div><div class="kpi-value" id="ana-connect">0%</div></article>
+          <article class="kpi-card glass"><div class="kpi-label">Avg Duration</div><div class="kpi-value" id="ana-duration">0s</div></article>
+          <article class="kpi-card glass"><div class="kpi-label">Booked Calls</div><div class="kpi-value" id="ana-booked">0</div></article>
+          <article class="kpi-card glass"><div class="kpi-label">Total Calls</div><div class="kpi-value" id="ana-total">0</div></article>
+        </div>
+        <div class="split">
+          <article class="panel glass">
+            <div class="panel-head"><h3>Daily Call Trend</h3></div>
+            <div id="daily-chart" class="chart"></div>
+          </article>
+          <article class="panel glass">
+            <div class="panel-head"><h3>Outcomes</h3></div>
+            <div id="outcomes-grid" class="outcomes"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="page-calendar" class="page">
+        <article class="panel glass">
+          <div class="panel-head"><h3>Booking Calendar</h3><div id="calendar-month"></div></div>
+          <div id="calendar-grid" class="calendar-grid"></div>
+        </article>
+      </section>
+
+      <section id="page-patients" class="page">
+        <article class="panel glass">
+          <div class="panel-head"><h3>Patients Directory</h3></div>
+          <div id="patients-cards" class="cards"></div>
+        </article>
+      </section>
+    </main>
+  </div>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
