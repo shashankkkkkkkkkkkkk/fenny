@@ -46,6 +46,13 @@ def is_within_booking_hours_ist(value: str | datetime) -> bool:
     return start_minutes <= appt_minutes < end_minutes
 
 
+def _slot_key_ist(value: str | datetime) -> str:
+    dt_ist = _to_ist_datetime(value)
+    if not dt_ist:
+        return ""
+    return dt_ist.strftime("%Y-%m-%dT%H:%M")
+
+
 def get_cal_creds() -> dict:
     raw_event_id = str(os.environ.get("CAL_EVENT_TYPE_ID", "0") or "0").strip()
     event_id = 0
@@ -239,6 +246,44 @@ async def _create_booking_calcom(
     if not creds["event_id"]:
         return {"success": False, "booking_id": None, "message": "CAL_EVENT_TYPE_ID is missing or invalid."}
 
+    requested_slot_key = _slot_key_ist(start_time)
+    requested_date = requested_slot_key[:10] if requested_slot_key else ""
+    if requested_date:
+        available_slots = _get_slots_calcom(requested_date)
+        available_slot_keys = {
+            _slot_key_ist(s.get("time"))
+            for s in available_slots
+            if isinstance(s, dict) and s.get("time")
+        }
+
+        if not available_slot_keys:
+            return {
+                "success": False,
+                "booking_id": None,
+                "message": (
+                    f"No bookable slots are available on {requested_date}. "
+                    "This usually means Cal.com minimum notice or scheduling window restrictions."
+                ),
+            }
+
+        if requested_slot_key not in available_slot_keys:
+            suggested = ", ".join(
+                [str(s.get("label")) for s in available_slots[:6] if isinstance(s, dict) and s.get("label")]
+            )
+            suggestion_msg = (
+                f" Available slots: {suggested} IST."
+                if suggested
+                else " Please choose one of the currently available slots."
+            )
+            return {
+                "success": False,
+                "booking_id": None,
+                "message": (
+                    f"The selected time {requested_slot_key} is not bookable for this event type."
+                    f"{suggestion_msg}"
+                ),
+            }
+
     payload = {
         "eventTypeId": creds["event_id"],
         "start": start_time,
@@ -277,6 +322,15 @@ async def _create_booking_calcom(
                     "success": True,
                     "booking_id": "already-signed-up",
                     "message": "Booking already exists for this caller and time.",
+                }
+            if resp.status_code == 400 and "The event type can't be booked at the \"start\" time provided" in resp.text:
+                return {
+                    "success": False,
+                    "booking_id": None,
+                    "message": (
+                        "The selected start time is blocked by Cal.com booking rules "
+                        "(minimum notice/scheduling window). Please fetch available slots and choose one of them."
+                    ),
                 }
             logger.error(f"[CAL] Booking failed {resp.status_code}: {resp.text}")
             return {"success": False, "booking_id": None, "message": resp.text}
