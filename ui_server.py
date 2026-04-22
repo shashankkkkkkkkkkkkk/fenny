@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+import re
+from datetime import datetime, timedelta, timezone
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
@@ -19,6 +21,44 @@ if os.path.isdir(FRONTEND_DIR):
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
 CONFIG_FILE = "config.json"
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _normalize_appointment_time_ist(value) -> str:
+    """
+    Normalize appointment timestamps into ISO-8601 IST while preserving wall-clock time.
+    Example: 10:00 stays 10:00 IST (no +5:30 display shift).
+    """
+    if value is None:
+        return ""
+    raw = str(value).strip()
+    if not raw:
+        return ""
+
+    matched = re.match(
+        r"^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(?:Z|[+\-]\d{2}:?\d{2})?$",
+        raw,
+        re.IGNORECASE,
+    )
+    if matched:
+        y, mo, da, hh, mm, ss = matched.groups()
+        ss = ss or "00"
+        return f"{y}-{mo}-{da}T{hh}:{mm}:{ss}+05:30"
+
+    normalized = raw.replace(" ", "T")
+    if normalized.endswith("Z"):
+        normalized = normalized[:-1] + "+00:00"
+    if re.search(r"[+\-]\d{4}$", normalized):
+        normalized = normalized[:-5] + normalized[-5:-2] + ":" + normalized[-2:]
+
+    try:
+        dt = datetime.fromisoformat(normalized)
+        if dt.tzinfo is not None:
+            dt = dt.replace(tzinfo=None)
+        dt = dt.replace(tzinfo=IST)
+        return dt.isoformat(timespec="minutes")
+    except Exception:
+        return raw
 
 def read_config():
     config = {}
@@ -32,18 +72,23 @@ def read_config():
     return {
         "first_line": get_val("first_line", "FIRST_LINE", "Namaste! This is Aryan from RapidX AI — we help businesses automate with AI. Hmm, may I ask what kind of business you run?"),
         "agent_instructions": get_val("agent_instructions", "AGENT_INSTRUCTIONS", ""),
-        "stt_min_endpointing_delay": float(get_val("stt_min_endpointing_delay", "STT_MIN_ENDPOINTING_DELAY", 0.6)),
+        "stt_min_endpointing_delay": float(get_val("stt_min_endpointing_delay", "STT_MIN_ENDPOINTING_DELAY", 0.08)),
         "llm_model": get_val("llm_model", "LLM_MODEL", "gpt-4o-mini"),
         "tts_voice": get_val("tts_voice", "TTS_VOICE", "kavya"),
-        "tts_language": get_val("tts_language", "TTS_LANGUAGE", "hi-IN"),
+        "tts_language": get_val("tts_language", "TTS_LANGUAGE", "en-IN"),
         "livekit_url": get_val("livekit_url", "LIVEKIT_URL", ""),
         "sip_trunk_id": get_val("sip_trunk_id", "SIP_TRUNK_ID", ""),
         "livekit_api_key": get_val("livekit_api_key", "LIVEKIT_API_KEY", ""),
         "livekit_api_secret": get_val("livekit_api_secret", "LIVEKIT_API_SECRET", ""),
+        "gemini_api_key": get_val("gemini_api_key", "GEMINI_API_KEY", ""),
         "openai_api_key": get_val("openai_api_key", "OPENAI_API_KEY", ""),
         "sarvam_api_key": get_val("sarvam_api_key", "SARVAM_API_KEY", ""),
         "cal_api_key": get_val("cal_api_key", "CAL_API_KEY", ""),
         "cal_event_type_id": get_val("cal_event_type_id", "CAL_EVENT_TYPE_ID", ""),
+        "supabase_s3_access_key": get_val("supabase_s3_access_key", "SUPABASE_S3_ACCESS_KEY", ""),
+        "supabase_s3_secret_key": get_val("supabase_s3_secret_key", "SUPABASE_S3_SECRET_KEY", ""),
+        "supabase_s3_endpoint": get_val("supabase_s3_endpoint", "SUPABASE_S3_ENDPOINT", ""),
+        "supabase_s3_region": get_val("supabase_s3_region", "SUPABASE_S3_REGION", "ap-south-1"),
         "supabase_url": get_val("supabase_url", "SUPABASE_URL", ""),
         "supabase_key": get_val("supabase_key", "SUPABASE_KEY", ""),
         **config
@@ -119,7 +164,18 @@ async def api_get_bookings():
     import db
     try:
         bookings = db.fetch_bookings()
-        return [b for b in bookings if not is_demo_phone(b.get("phone_number"))]
+        cleaned = []
+        for b in bookings:
+            phone = normalize_phone_number(b.get("phone_number")) or b.get("phone_number")
+            if is_demo_phone(phone):
+                continue
+            row = dict(b)
+            row["phone_number"] = phone
+            row["appointment_time"] = _normalize_appointment_time_ist(row.get("appointment_time"))
+            cleaned.append(row)
+
+        cleaned.sort(key=lambda x: x.get("appointment_time") or "", reverse=True)
+        return cleaned
     except Exception as e:
         logger.error(f"Error fetching bookings: {e}")
         return []
@@ -145,11 +201,18 @@ async def api_get_contacts():
     try:
         from supabase import create_client
         supabase = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
-        res = supabase.table("call_logs") \
-            .select("phone_number, caller_name, summary, call_purpose, call_summary, created_at") \
-            .order("created_at", desc=True) \
-            .limit(500) \
-            .execute()
+        try:
+            res = supabase.table("call_logs") \
+                .select("phone_number, caller_name, summary, call_purpose, call_summary, created_at, was_booked") \
+                .order("created_at", desc=True) \
+                .limit(500) \
+                .execute()
+        except Exception:
+            res = supabase.table("call_logs") \
+                .select("phone_number, caller_name, summary, call_purpose, call_summary, created_at") \
+                .order("created_at", desc=True) \
+                .limit(500) \
+                .execute()
         rows = res.data or []
 
         # Deduplicate by phone number
@@ -174,7 +237,8 @@ async def api_get_contacts():
             if not c["caller_name"] and r.get("caller_name"):
                 c["caller_name"] = r["caller_name"]
             # Mark booked if any call had a confirmed booking
-            if r.get("summary") and "Confirmed" in r.get("summary", ""):
+            summary_text = str(r.get("summary") or "").lower()
+            if bool(r.get("was_booked")) or ("confirm" in summary_text) or ("already_signed_up" in summary_text) or ("already signed up" in summary_text):
                 c["is_booked"] = True
 
         return sorted(contacts.values(), key=lambda x: x["last_seen"] or "", reverse=True)
@@ -210,7 +274,8 @@ async def api_get_analytics():
                 total_duration += duration
                 connected_calls += 1
 
-            if "confirm" in summary:
+            is_booked = bool(row.get("was_booked")) or ("confirm" in summary) or ("already_signed_up" in summary) or ("already signed up" in summary)
+            if is_booked:
                 booked_calls += 1
                 outcomes["booked"] += 1
             elif "cancel" in summary:
@@ -883,8 +948,8 @@ async def get_dashboard():
       <div class="section-title">Listening Sensitivity</div>
       <div class="form-group" style="max-width:220px;">
         <label>Endpointing Delay (seconds)</label>
-        <input type="number" id="stt_min_endpointing_delay" step="0.05" min="0.1" max="3.0" value="{config.get('stt_min_endpointing_delay', 0.6)}">
-        <div class="hint">Seconds the AI waits after silence before responding. Default: 0.6</div>
+        <input type="number" id="stt_min_endpointing_delay" step="0.01" min="0.05" max="1.0" value="{config.get('stt_min_endpointing_delay', 0.08)}">
+        <div class="hint">Seconds the AI waits after silence before responding. Recommended: 0.05 to 0.12</div>
       </div>
     </div>
     <div class="save-bar">
@@ -1088,6 +1153,7 @@ async def get_dashboard():
     <div class="section-card">
       <div class="section-title">AI Providers</div>
       <div class="form-row">
+        <div class="form-group"><label>Gemini API Key</label><input type="password" id="gemini_api_key" value="{config.get('gemini_api_key', '')}"></div>
         <div class="form-group"><label>OpenAI API Key</label><input type="password" id="openai_api_key" value="{config.get('openai_api_key', '')}"></div>
         <div class="form-group"><label>Sarvam API Key</label><input type="password" id="sarvam_api_key" value="{config.get('sarvam_api_key', '')}"></div>
       </div>
@@ -1099,6 +1165,10 @@ async def get_dashboard():
         <div class="form-group"><label>Cal.com Event Type ID</label><input type="text" id="cal_event_type_id" value="{config.get('cal_event_type_id', '')}"></div>
         <div class="form-group"><label>Supabase URL</label><input type="text" id="supabase_url" value="{config.get('supabase_url', '')}"></div>
         <div class="form-group"><label>Supabase Anon Key</label><input type="password" id="supabase_key" value="{config.get('supabase_key', '')}"></div>
+        <div class="form-group"><label>Supabase S3 Access Key</label><input type="password" id="supabase_s3_access_key" value="{config.get('supabase_s3_access_key', '')}"></div>
+        <div class="form-group"><label>Supabase S3 Secret Key</label><input type="password" id="supabase_s3_secret_key" value="{config.get('supabase_s3_secret_key', '')}"></div>
+        <div class="form-group"><label>Supabase S3 Endpoint</label><input type="text" id="supabase_s3_endpoint" value="{config.get('supabase_s3_endpoint', '')}"></div>
+        <div class="form-group"><label>Supabase S3 Region</label><input type="text" id="supabase_s3_region" value="{config.get('supabase_s3_region', 'ap-south-1')}"></div>
       </div>
     </div>
     <div class="save-bar">
@@ -1359,8 +1429,12 @@ async function saveConfig(section) {{
     Object.assign(payload, {{
       livekit_url: get('livekit_url'), sip_trunk_id: get('sip_trunk_id'),
       livekit_api_key: get('livekit_api_key'), livekit_api_secret: get('livekit_api_secret'),
-      openai_api_key: get('openai_api_key'), sarvam_api_key: get('sarvam_api_key'),
+      gemini_api_key: get('gemini_api_key'), openai_api_key: get('openai_api_key'), sarvam_api_key: get('sarvam_api_key'),
       cal_api_key: get('cal_api_key'), cal_event_type_id: get('cal_event_type_id'),
+      supabase_s3_access_key: get('supabase_s3_access_key'),
+      supabase_s3_secret_key: get('supabase_s3_secret_key'),
+      supabase_s3_endpoint: get('supabase_s3_endpoint'),
+      supabase_s3_region: get('supabase_s3_region'),
       supabase_url: get('supabase_url'), supabase_key: get('supabase_key'),
     }});
   }}

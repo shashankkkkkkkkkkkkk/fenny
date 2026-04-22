@@ -12,7 +12,7 @@ logger = logging.getLogger("db")
 _ANALYTICS_COLUMNS = {
     "sentiment", "was_booked", "interrupt_count",
     "estimated_cost_usd", "call_date", "call_hour", "call_day_of_week",
-    "call_purpose", "call_summary",
+    "call_purpose", "call_summary", "appointment_time",
 }
 _BASE_COLUMNS = {"phone_number", "duration_seconds", "transcript", "summary",
                  "recording_url", "caller_name"}
@@ -59,6 +59,7 @@ def save_call_log(
     duration: int,
     transcript: str,
     summary: str = "",
+    appointment_time: str | None = None,
     call_purpose: str = "",
     call_summary: str = "",
     recording_url: str = "",
@@ -98,6 +99,7 @@ def save_call_log(
         "duration_seconds": duration,
         "transcript":      transcript,
         "summary":         summary,
+        "appointment_time": appointment_time,
         "call_purpose":    call_purpose,
         "call_summary":    call_summary,
         "sentiment":       sentiment,
@@ -186,15 +188,58 @@ def fetch_bookings() -> list:
     try:
         res = (
             supabase.table("call_logs")
-            .select("id, phone_number, summary, created_at")
+            .select("id, phone_number, summary, created_at, appointment_time, caller_name, was_booked")
             .neq("phone_number", "demo")
-            .ilike("summary", "%Confirmed%")
-            .order("created_at", desc=True)
-            .limit(200)
+            .order("appointment_time", desc=True)
+            .limit(500)
             .execute()
         )
-        return res.data
+        rows = res.data or []
+        bookings = []
+        for r in rows:
+            summary = str(r.get("summary") or "").lower()
+            is_booked = bool(r.get("was_booked")) or ("confirm" in summary) or ("already_signed_up" in summary) or ("already signed up" in summary)
+            if not is_booked:
+                continue
+            if not r.get("appointment_time"):
+                continue
+            bookings.append(r)
+        # One appointment per slot (minute-level) on dashboard surfaces.
+        bookings.sort(key=lambda x: (str(x.get("appointment_time") or ""), str(x.get("created_at") or "")), reverse=True)
+        unique_by_slot: dict[str, dict] = {}
+        for b in bookings:
+            slot = str(b.get("appointment_time") or "")[:16]  # YYYY-MM-DDTHH:MM
+            if slot and slot not in unique_by_slot:
+                unique_by_slot[slot] = b
+        return list(unique_by_slot.values())
     except Exception as e:
+        err = str(e)
+        if _is_schema_error(err):
+            try:
+                res = (
+                    supabase.table("call_logs")
+                    .select("id, phone_number, summary, created_at, appointment_time")
+                    .neq("phone_number", "demo")
+                    .order("created_at", desc=True)
+                    .limit(500)
+                    .execute()
+                )
+                rows = res.data or []
+                bookings = []
+                for r in rows:
+                    summary = str(r.get("summary") or "").lower()
+                    if (("confirm" in summary) or ("already_signed_up" in summary) or ("already signed up" in summary)) and r.get("appointment_time"):
+                        bookings.append(r)
+                bookings.sort(key=lambda x: (str(x.get("appointment_time") or ""), str(x.get("created_at") or "")), reverse=True)
+                unique_by_slot: dict[str, dict] = {}
+                for b in bookings:
+                    slot = str(b.get("appointment_time") or "")[:16]
+                    if slot and slot not in unique_by_slot:
+                        unique_by_slot[slot] = b
+                return list(unique_by_slot.values())
+            except Exception as e2:
+                logger.error(f"Failed to fetch bookings (fallback): {e2}")
+                return []
         logger.error(f"Failed to fetch bookings: {e}")
         return []
 
@@ -209,12 +254,16 @@ def fetch_stats() -> dict:
     try:
         rows = (
             supabase.table("call_logs")
-            .select("duration_seconds, summary, phone_number")
+            .select("duration_seconds, summary, phone_number, was_booked")
             .neq("phone_number", "demo")
             .execute()
         ).data or []
         total = len(rows)
-        bookings = sum(1 for r in rows if "Confirmed" in r.get("summary", ""))
+        bookings = 0
+        for r in rows:
+            summary = str(r.get("summary") or "").lower()
+            if bool(r.get("was_booked")) or ("confirm" in summary) or ("already_signed_up" in summary) or ("already signed up" in summary):
+                bookings += 1
         durations = [r["duration_seconds"] for r in rows if r.get("duration_seconds")]
         avg_dur = round(sum(durations) / len(durations)) if durations else 0
         rate = round((bookings / total) * 100) if total else 0

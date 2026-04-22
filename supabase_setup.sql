@@ -21,6 +21,7 @@ ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS was_booked BOOLEAN DEFAULT FALSE;
 ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS interrupt_count INTEGER DEFAULT 0;
 ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS call_purpose TEXT;
 ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS call_summary TEXT;
+ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS appointment_time TIMESTAMPTZ;
 
 CREATE INDEX IF NOT EXISTS idx_call_logs_phone ON call_logs (phone_number);
 CREATE INDEX IF NOT EXISTS idx_call_logs_created_at ON call_logs (created_at DESC);

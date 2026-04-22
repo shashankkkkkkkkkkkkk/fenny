@@ -15,6 +15,7 @@ ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS interrupt_count     INTEGER DEFAU
 ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS audio_codec         TEXT;
 ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS call_purpose        TEXT;
 ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS call_summary        TEXT;
+ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS appointment_time    TIMESTAMPTZ;
 
 -- 2. Real-time transcript table
 CREATE TABLE IF NOT EXISTS call_transcripts (

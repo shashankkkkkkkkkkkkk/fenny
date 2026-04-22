@@ -8,16 +8,117 @@ const state = {
 
 const PAGE_TITLES = {
   overview: "🏠 Overview",
-  crm: "👥 CRM",
+  crm: "🧭 CRM",
   analytics: "📈 Analytics",
-  calendar: "📅 Calendar",
-  patients: "🧾 Patients",
+  calendar: "🗓️ Calendar",
+  patients: "🩺 Patients",
 };
 
 function safeDate(value) {
   if (!value) return "—";
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("en-IN");
+}
+
+function formatDateKeyIST(dateValue) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(dateValue);
+  const year = parts.find((p) => p.type === "year")?.value;
+  const month = parts.find((p) => p.type === "month")?.value;
+  const day = parts.find((p) => p.type === "day")?.value;
+  if (!year || !month || !day) return "";
+  return `${year}-${month}-${day}`;
+}
+
+function parseAppointmentDate(value) {
+  if (!value) return null;
+  const raw = String(value).trim();
+  if (!raw) return null;
+
+  const matched = raw.match(
+    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+\-]\d{2}:?\d{2})?$/i,
+  );
+  if (matched) {
+    const [, y, mo, da, hh, mm, ss = "00", zone = ""] = matched;
+    if (zone) {
+      const zoneNorm = zone === "Z" ? "Z" : (zone.includes(":") ? zone : `${zone.slice(0, 3)}:${zone.slice(3)}`);
+      const iso = `${y}-${mo}-${da}T${hh}:${mm}:${ss}${zoneNorm}`;
+      const zonedDate = new Date(iso);
+      if (!Number.isNaN(zonedDate.getTime())) return zonedDate;
+    } else {
+      // No timezone provided: treat the value as IST wall-clock time.
+      const utcMs = Date.UTC(Number(y), Number(mo) - 1, Number(da), Number(hh), Number(mm), Number(ss)) - (330 * 60 * 1000);
+      return new Date(utcMs);
+    }
+  }
+
+  const normalized = raw.replace(" ", "T");
+  const d = new Date(normalized);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function appointmentDateKeyIST(value) {
+  const d = parseAppointmentDate(value);
+  if (!d) return "";
+  return formatDateKeyIST(d);
+}
+
+function safeAppointmentDate(value) {
+  if (!value) return "Appointment time unavailable";
+  const d = parseAppointmentDate(value);
+  if (!d) return "Appointment time unavailable";
+  const formatted = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d);
+  return `${formatted} IST`;
+}
+
+function safeAppointmentTime(value) {
+  if (!value) return "Time unavailable";
+  const d = parseAppointmentDate(value);
+  if (!d) return "Time unavailable";
+  const formatted = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  }).format(d);
+  return `${formatted} IST`;
+}
+
+function humanizeSummary(text) {
+  const raw = String(text || "").trim();
+  if (!raw) return "Call completed.";
+
+  const tryJsonExtract = (source) => {
+    const first = source.indexOf("{");
+    const last = source.lastIndexOf("}");
+    if (first >= 0 && last > first) {
+      try {
+        return JSON.parse(source.slice(first, last + 1));
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  };
+
+  const asJson = tryJsonExtract(raw);
+  if (asJson && typeof asJson === "object") {
+    const msg = asJson.message || asJson.error || asJson.detail || "";
+    if (msg) return String(msg).replace(/_/g, " ");
+  }
+  return raw.replace(/\{"statusCode":[^}]+\}/g, "").replace(/\s{2,}/g, " ").trim();
 }
 
 function setPage(page) {
@@ -27,6 +128,7 @@ function setPage(page) {
   document.querySelectorAll(".page").forEach((el) => {
     el.classList.toggle("active", el.id === `page-${page}`);
   });
+  document.body.setAttribute("data-current-page", page);
   document.getElementById("page-title").textContent = PAGE_TITLES[page] || page;
 }
 
@@ -49,14 +151,19 @@ function renderOverview() {
   document.getElementById("active-calls-pill").textContent = `${activeCalls} Active Calls`;
 
   const appBody = document.getElementById("overview-appointments");
-  const topBookings = state.bookings.slice(0, 6);
+  const now = new Date();
+  const topBookings = state.bookings
+    .map((b) => ({ ...b, parsedAppointment: parseAppointmentDate(b.appointment_time) }))
+    .filter((b) => b.parsedAppointment && b.parsedAppointment.getTime() >= now.getTime())
+    .sort((a, b) => a.parsedAppointment.getTime() - b.parsedAppointment.getTime())
+    .slice(0, 6);
   if (!topBookings.length) {
     appBody.innerHTML = `<tr><td colspan="3">No appointments yet.</td></tr>`;
   } else {
     appBody.innerHTML = topBookings.map((b) => `
       <tr>
         <td>${b.phone_number || "Unknown"}</td>
-        <td>${safeDate(b.created_at)}</td>
+        <td>${safeAppointmentTime(b.appointment_time)}</td>
         <td>${tag("Confirmed", "ok")}</td>
       </tr>
     `).join("");
@@ -123,7 +230,15 @@ function renderCRMDetails(phone) {
         <div class="crm-call-item">
           <div class="crm-meta">${safeDate(call.created_at)} • ${call.duration_seconds || 0}s</div>
           <div class="crm-purpose">${call.call_purpose || person.latest_purpose || "General conversation"}</div>
-          <div class="crm-summary">${call.call_summary || call.summary || person.latest_summary || "Call completed."}</div>
+          <div class="crm-summary">${humanizeSummary(call.call_summary || call.summary || person.latest_summary || "Call completed.")}</div>
+          <div class="crm-recording">
+            ${((call.recording_url || call.recordingUrl || "").trim())
+              ? `
+                <audio class="crm-audio" controls preload="none" src="${(call.recording_url || call.recordingUrl || "").trim()}"></audio>
+              `
+              : `<small class="crm-recording-empty">Recording unavailable for this call.</small>`
+            }
+          </div>
         </div>
       `).join("")}
     </div>
@@ -169,12 +284,13 @@ function renderCalendar() {
   const y = now.getFullYear();
   const m = now.getMonth();
   monthEl.textContent = now.toLocaleString("en-IN", { month: "long", year: "numeric" });
+  const todayKey = formatDateKeyIST(now);
 
   const first = new Date(y, m, 1);
   const last = new Date(y, m + 1, 0);
   const byDate = {};
   state.bookings.forEach((b) => {
-    const d = (b.created_at || "").slice(0, 10);
+    const d = appointmentDateKeyIST(b.appointment_time);
     if (!d) return;
     byDate[d] = (byDate[d] || 0) + 1;
   });
@@ -184,7 +300,9 @@ function renderCalendar() {
   for (let day = 1; day <= last.getDate(); day++) {
     const ds = `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const count = byDate[ds] || 0;
-    cells.push(`<div class="cal-cell"><div class="cal-day">${day}</div>${count ? `<div class="cal-count">${count} booking${count > 1 ? "s" : ""}</div>` : ""}</div>`);
+    const todayBadge = ds === todayKey ? `<span class="today-dot" aria-hidden="true"></span>` : "";
+    const todayClass = ds === todayKey ? " today" : "";
+    cells.push(`<div class="cal-cell"><div class="cal-day${todayClass}">${day}${todayBadge}</div>${count ? `<div class="cal-count">${count} booking${count > 1 ? "s" : ""}</div>` : ""}</div>`);
   }
   grid.innerHTML = cells.join("");
 }
@@ -276,6 +394,7 @@ function setupNavigation() {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
+  document.body.setAttribute("data-current-page", "overview");
   setupTheme();
   setupNavigation();
   setupSearch();
