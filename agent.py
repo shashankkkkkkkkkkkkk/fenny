@@ -14,32 +14,7 @@ from livekit import api
 from livekit.agents import Agent, AgentSession, JobContext, RoomInputOptions, WorkerOptions, cli, llm
 from livekit.plugins import openai, sarvam, silero
 
-CONFIG_FILE = "config.json"
-
-def get_live_config():
-    config = {}
-    if os.path.exists(CONFIG_FILE):
-        try:
-            with open(CONFIG_FILE, "r") as f:
-                config = json.load(f)
-        except Exception as e:
-            logger.error(f"[CONFIG] {e}")
-    # Push config keys into env so plugins pick them up
-    for k, envk in [
-        ("livekit_url","LIVEKIT_URL"), ("livekit_api_key","LIVEKIT_API_KEY"),
-        ("livekit_api_secret","LIVEKIT_API_SECRET"), ("gemini_api_key","GEMINI_API_KEY"),
-        ("groq_api_key","GROQ_API_KEY"), ("sarvam_api_key","SARVAM_API_KEY"),
-        ("cal_api_key","CAL_API_KEY"), ("cal_event_type_id","CAL_EVENT_TYPE_ID"),
-        ("supabase_url","SUPABASE_URL"), ("supabase_key","SUPABASE_KEY"),
-        ("supabase_s3_access_key","SUPABASE_S3_ACCESS_KEY"),
-        ("supabase_s3_secret_key","SUPABASE_S3_SECRET_KEY"),
-        ("supabase_s3_endpoint","SUPABASE_S3_ENDPOINT"),
-        ("supabase_s3_region","SUPABASE_S3_REGION"),
-    ]:
-        val = config.get(k, "")
-        if val:
-            os.environ[envk] = val
-    return config
+from config_manager import get_config as get_live_config
 
 def count_tokens(text):
     try:

@@ -16,7 +16,6 @@ FRONTEND_DIR = os.path.join(BASE_DIR, "frontend")
 if os.path.isdir(FRONTEND_DIR):
     app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
-CONFIG_FILE = "config.json"
 IST = timezone(timedelta(hours=5, minutes=30))
 
 
@@ -36,49 +35,14 @@ def _norm_appt(value):
     except: return raw
 
 
-def read_config():
-    config = {}
-    if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, "r") as f:
-            config = json.load(f)
-    def g(k, e, d=""): return config.get(k) if config.get(k) else os.getenv(e, d)
-    return {
-        "first_line": g("first_line","FIRST_LINE","Hello! How can I help you today?"),
-        "agent_instructions": g("agent_instructions","AGENT_INSTRUCTIONS",""),
-        "stt_min_endpointing_delay": float(g("stt_min_endpointing_delay","STT_MIN_ENDPOINTING_DELAY",0.08)),
-        "llm_provider": g("llm_provider","LLM_PROVIDER","gemini"),
-        "gemini_model": g("gemini_model","GEMINI_MODEL","gemini-2.0-flash"),
-        "groq_model": g("groq_model","GROQ_MODEL","llama-3.3-70b-versatile"),
-        "llm_max_completion_tokens": int(g("llm_max_completion_tokens","LLM_MAX_COMPLETION_TOKENS",80)),
-        "tts_voice": g("tts_voice","TTS_VOICE","kavya"),
-        "tts_language": g("tts_language","TTS_LANGUAGE","en-IN"),
-        "lang_preset": g("lang_preset","LANG_PRESET","multilingual"),
-        "max_turns": int(g("max_turns","MAX_TURNS",30)),
-        "livekit_url": g("livekit_url","LIVEKIT_URL",""),
-        "livekit_api_key": g("livekit_api_key","LIVEKIT_API_KEY",""),
-        "livekit_api_secret": g("livekit_api_secret","LIVEKIT_API_SECRET",""),
-        "gemini_api_key": g("gemini_api_key","GEMINI_API_KEY",""),
-        "groq_api_key": g("groq_api_key","GROQ_API_KEY",""),
-        "sarvam_api_key": g("sarvam_api_key","SARVAM_API_KEY",""),
-        "cal_api_key": g("cal_api_key","CAL_API_KEY",""),
-        "cal_event_type_id": g("cal_event_type_id","CAL_EVENT_TYPE_ID",""),
-        "sip_trunk_id": g("sip_trunk_id","SIP_TRUNK_ID",""),
-        "vobiz_sip_domain": g("vobiz_sip_domain","VOBIZ_SIP_DOMAIN",""),
-        "supabase_url": g("supabase_url","SUPABASE_URL",""),
-        "supabase_key": g("supabase_key","SUPABASE_KEY",""),
-        "supabase_s3_access_key": g("supabase_s3_access_key","SUPABASE_S3_ACCESS_KEY",""),
-        "supabase_s3_secret_key": g("supabase_s3_secret_key","SUPABASE_S3_SECRET_KEY",""),
-        "supabase_s3_endpoint": g("supabase_s3_endpoint","SUPABASE_S3_ENDPOINT",""),
-        "supabase_s3_region": g("supabase_s3_region","SUPABASE_S3_REGION","ap-south-1"),
-        **config
-    }
-
+from config_manager import get_config as read_config
 
 def write_config(data):
-    config = read_config()
-    config.update(data)
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=4)
+    logger.warning("Config writing is disabled. Please use environment variables.")
+# Removed dict literal
+
+
+# Removed old write_config implementation
 
 
 def _set_supabase_env():
