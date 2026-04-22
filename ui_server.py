@@ -83,7 +83,10 @@ async def api_get_transcript(log_id: str):
     _set_supabase_env()
     try:
         from supabase import create_client
-        sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+        url = os.environ.get("SUPABASE_URL", "")
+        key = os.environ.get("SUPABASE_KEY", "")
+        if not url or not key: return PlainTextResponse(content="Error: Missing Supabase credentials in environment", status_code=500)
+        sb = create_client(url, key)
         data = sb.table("call_logs").select("*").eq("id", log_id).single().execute().data
         text = f"Call Log — {data.get('created_at','')}\nPhone: {data.get('phone_number','Unknown')}\nDuration: {data.get('duration_seconds',0)}s\nSummary: {data.get('summary','')}\n\n--- TRANSCRIPT ---\n{data.get('transcript','No transcript.')}"
         return PlainTextResponse(content=text, headers={"Content-Disposition": f"attachment; filename=transcript_{log_id}.txt"})
@@ -118,7 +121,10 @@ async def api_get_contacts():
     _set_supabase_env()
     try:
         from supabase import create_client
-        sb = create_client(os.environ["SUPABASE_URL"], os.environ["SUPABASE_KEY"])
+        url = os.environ.get("SUPABASE_URL", "")
+        key = os.environ.get("SUPABASE_KEY", "")
+        if not url or not key: return []
+        sb = create_client(url, key)
         try:
             rows = sb.table("call_logs").select("phone_number,caller_name,summary,call_purpose,call_summary,created_at,was_booked").order("created_at",desc=True).limit(500).execute().data or []
         except:
