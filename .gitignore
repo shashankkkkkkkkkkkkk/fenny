@@ -2,6 +2,9 @@
 .env
 .env.local
 
+# Config with secrets (use env vars in production)
+config.json
+
 # Python virtual environment
 .venv/
 venv/
