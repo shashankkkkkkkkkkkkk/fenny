@@ -15,5 +15,5 @@ ENV PYTHONDONTWRITEBYTECODE=1
 EXPOSE 8000
 
 # Default: run the web dashboard
-# Override with: docker run ... python agent.py start
-CMD ["uvicorn", "ui_server:app", "--host", "0.0.0.0", "--port", "8000"]
+# Use the shell form of CMD so $PORT environment variable is evaluated
+CMD uvicorn ui_server:app --host 0.0.0.0 --port ${PORT:-8000}
