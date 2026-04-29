@@ -205,8 +205,7 @@ async def api_get_analytics():
 
 # ── SPA fallback ──────────────────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
-@app.get("/{path:path}", response_class=HTMLResponse)
-async def spa(path: str = ""):
+async def root():
     idx = os.path.join(FRONTEND_DIR, "index.html")
     if os.path.exists(idx):
         with open(idx, "r", encoding="utf-8") as f:
