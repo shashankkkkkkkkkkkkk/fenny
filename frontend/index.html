@@ -3,134 +3,357 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sri Aakrithis Console</title>
+  <title>Sri Aakrithis AI Receptionist</title>
+  <meta name="description" content="AI Voice Receptionist dashboard for Sri Aakrithis Dental Lounge — real-time call analytics, patient CRM, and appointment management.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
-<body data-theme="dark">
+<body>
+  <!-- Animated Background -->
+  <div class="bg-aurora"></div>
   <div class="bg-grid"></div>
+
   <div class="app-shell">
-    <aside class="sidebar glass">
-      <div class="brand">
-        <div class="brand-logo">S</div>
-        <div>
-          <div class="brand-title">Sri Aakrithis</div>
-          <div class="brand-sub">AI RECEPTIONIST</div>
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <div class="brand-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M12 2a10 10 0 1 0 10 10" stroke-linecap="round"/>
+              <path d="M12 6v6l4 2" stroke-linecap="round"/>
+            </svg>
+          </div>
+          <div class="brand-text">
+            <div class="brand-name">Sri Aakrithis</div>
+            <div class="brand-tagline">AI Receptionist</div>
+          </div>
         </div>
       </div>
-      <nav class="nav" id="nav">
-        <button class="nav-item active" data-page="overview">🏠 Overview</button>
-        <button class="nav-item" data-page="crm">🧭 CRM</button>
-        <button class="nav-item" data-page="analytics">📈 Analytics</button>
-        <button class="nav-item" data-page="calendar">🗓️ Calendar</button>
-        <button class="nav-item" data-page="patients">🩺 Patients</button>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-label">Main</div>
+        <button class="nav-item active" data-page="overview" id="nav-overview">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+          </span>
+          <span class="nav-label">Overview</span>
+        </button>
+        <button class="nav-item" data-page="calls" id="nav-calls">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9a16 16 0 0 0 6 6l1.8-1.8a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 15.92z"/></svg>
+          </span>
+          <span class="nav-label">Call Logs</span>
+        </button>
+        <button class="nav-item" data-page="analytics" id="nav-analytics">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          </span>
+          <span class="nav-label">Analytics</span>
+        </button>
+
+        <div class="nav-section-label" style="margin-top:16px">Patients</div>
+        <button class="nav-item" data-page="crm" id="nav-crm">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          </span>
+          <span class="nav-label">CRM</span>
+        </button>
+        <button class="nav-item" data-page="calendar" id="nav-calendar">
+          <span class="nav-icon">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+          </span>
+          <span class="nav-label">Appointments</span>
+        </button>
       </nav>
+
       <div class="sidebar-footer">
-        <span class="dot"></span> Agent Online
+        <div class="agent-status" id="agent-status-indicator">
+          <span class="status-dot pulse"></span>
+          <span class="status-text">Agent Online</span>
+        </div>
       </div>
     </aside>
 
-    <main class="main">
-      <header class="topbar glass">
-        <h1 id="page-title">🏠 Overview</h1>
-        <div class="top-actions">
-          <span class="pill" id="active-calls-pill">0 Active Calls</span>
-          <button id="theme-toggle" class="theme-toggle-btn" aria-label="Toggle theme">
-            <span id="theme-icon">🌙</span>
+    <!-- Main Content -->
+    <div class="main-wrap">
+      <!-- Topbar -->
+      <header class="topbar">
+        <div class="topbar-left">
+          <button class="mobile-menu-btn" id="mobile-menu-btn" aria-label="Open menu">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+          </button>
+          <h1 id="page-title">Overview</h1>
+        </div>
+        <div class="topbar-right">
+          <div class="live-badge" id="live-pill">
+            <span class="live-dot"></span>
+            <span id="active-calls-count">0</span> Live
+          </div>
+          <button class="icon-btn" id="refresh-btn" title="Refresh data">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          </button>
+          <button class="icon-btn" id="theme-toggle" title="Toggle theme">
+            <svg id="theme-icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+            <svg id="theme-icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
           </button>
         </div>
       </header>
 
-      <section id="page-overview" class="page active">
-        <div class="kpi-grid">
-          <article class="kpi-card glass"><div class="kpi-label">Calls Today</div><div class="kpi-value" id="kpi-calls">0</div></article>
-          <article class="kpi-card glass"><div class="kpi-label">Appointments</div><div class="kpi-value" id="kpi-bookings">0</div></article>
-          <article class="kpi-card glass"><div class="kpi-label">Patients</div><div class="kpi-value" id="kpi-patients">0</div></article>
-          <article class="kpi-card glass"><div class="kpi-label">Booking Rate</div><div class="kpi-value" id="kpi-rate">0%</div></article>
-        </div>
+      <main class="main-content">
 
-        <div class="hero glass">
-          <div class="hero-badge">Live Activity Monitor</div>
-          <p id="hero-text">Agent is taking your calls...</p>
-          <div class="voice-orb-wrap" aria-hidden="true">
-            <div class="voice-orb">
-              <span class="voice-core"></span>
-              <span class="voice-ring voice-ring-1"></span>
-              <span class="voice-ring voice-ring-2"></span>
+        <!-- ═══ OVERVIEW PAGE ═══ -->
+        <section id="page-overview" class="page active">
+          <div class="kpi-row">
+            <div class="kpi-card" id="kpi-total">
+              <div class="kpi-icon kpi-blue">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12a19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 3.6 1.27h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 9a16 16 0 0 0 6 6l1.8-1.8a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 15.92z"/></svg>
+              </div>
+              <div class="kpi-body">
+                <div class="kpi-value" id="kpi-calls">—</div>
+                <div class="kpi-label">Total Calls</div>
+              </div>
+              <div class="kpi-trend up" id="kpi-calls-trend"></div>
+            </div>
+            <div class="kpi-card" id="kpi-bookings-card">
+              <div class="kpi-icon kpi-green">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+              </div>
+              <div class="kpi-body">
+                <div class="kpi-value" id="kpi-bookings">—</div>
+                <div class="kpi-label">Appointments</div>
+              </div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon kpi-purple">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+              </div>
+              <div class="kpi-body">
+                <div class="kpi-value" id="kpi-patients">—</div>
+                <div class="kpi-label">Unique Patients</div>
+              </div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon kpi-amber">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+              </div>
+              <div class="kpi-body">
+                <div class="kpi-value" id="kpi-rate">—</div>
+                <div class="kpi-label">Booking Rate</div>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div class="split">
-          <article class="panel glass">
-            <div class="panel-head"><h3>Upcoming Appointments</h3></div>
-            <table class="table">
-              <thead><tr><th>Patient</th><th>Time</th><th>Status</th></tr></thead>
-              <tbody id="overview-appointments"></tbody>
-            </table>
-          </article>
-          <article class="panel glass">
-            <div class="panel-head"><h3>Recent Patients</h3></div>
-            <div id="overview-patients" class="list"></div>
-          </article>
-        </div>
-      </section>
-
-      <section id="page-crm" class="page">
-        <div class="crm-grid">
-        <article class="panel glass">
-          <div class="panel-head">
-            <h3>CRM Pipeline</h3>
-            <input id="crm-search" class="input" placeholder="Search by name or phone">
+          <!-- Agent Orb Hero -->
+          <div class="orb-hero">
+            <div class="orb-wrap">
+              <div class="orb-ring orb-ring-3"></div>
+              <div class="orb-ring orb-ring-2"></div>
+              <div class="orb-ring orb-ring-1"></div>
+              <div class="orb-core">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+              </div>
+            </div>
+            <div class="orb-info">
+              <div class="orb-title">Aria is Live</div>
+              <div class="orb-subtitle">Answering calls 24/7 for Sri Aakrithis Dental Lounge</div>
+              <div class="orb-stats">
+                <span class="orb-stat"><span class="stat-dot green"></span> <span id="orb-avg-dur">—</span> avg duration</span>
+                <span class="orb-stat"><span class="stat-dot blue"></span> Multilingual</span>
+                <span class="orb-stat"><span class="stat-dot purple"></span> Gemini 2.5</span>
+              </div>
+            </div>
           </div>
-          <table class="table">
-            <thead><tr><th>Name</th><th>Phone</th><th>Total Calls</th><th>Last Seen</th><th>Status</th></tr></thead>
-            <tbody id="crm-body"></tbody>
-          </table>
-        </article>
-        <article class="panel glass" id="crm-details-panel">
-          <div class="panel-head"><h3>Caller Insights</h3></div>
-          <div id="crm-details" class="crm-details-empty">Select a person in CRM Pipeline to see call purpose and summaries.</div>
-        </article>
-        </div>
-      </section>
 
-      <section id="page-analytics" class="page">
-        <div class="kpi-grid">
-          <article class="kpi-card glass"><div class="kpi-label">Connect Rate</div><div class="kpi-value" id="ana-connect">0%</div></article>
-          <article class="kpi-card glass"><div class="kpi-label">Avg Duration</div><div class="kpi-value" id="ana-duration">0s</div></article>
-          <article class="kpi-card glass"><div class="kpi-label">Booked Calls</div><div class="kpi-value" id="ana-booked">0</div></article>
-          <article class="kpi-card glass"><div class="kpi-label">Total Calls</div><div class="kpi-value" id="ana-total">0</div></article>
-        </div>
-        <div class="split">
-          <article class="panel glass">
-            <div class="panel-head"><h3>Daily Call Trend</h3></div>
-            <div id="daily-chart" class="chart"></div>
-          </article>
-          <article class="panel glass">
-            <div class="panel-head"><h3>Outcomes</h3></div>
-            <div id="outcomes-grid" class="outcomes"></div>
-          </article>
-        </div>
-      </section>
+          <div class="two-col">
+            <div class="panel">
+              <div class="panel-head">
+                <h3 class="panel-title">Upcoming Appointments</h3>
+                <span class="badge" id="appt-count">0</span>
+              </div>
+              <div class="panel-body">
+                <table class="data-table">
+                  <thead><tr><th>Patient</th><th>Date & Time</th><th>Status</th></tr></thead>
+                  <tbody id="overview-appointments"><tr><td colspan="3" class="empty-cell">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-head">
+                <h3 class="panel-title">Recent Callers</h3>
+                <span class="badge" id="recent-count">0</span>
+              </div>
+              <div class="panel-body" id="overview-patients">
+                <div class="empty-state">Loading…</div>
+              </div>
+            </div>
+          </div>
+        </section>
 
-      <section id="page-calendar" class="page">
-        <article class="panel glass">
-          <div class="panel-head"><h3>Booking Calendar</h3><div id="calendar-month"></div></div>
-          <div id="calendar-grid" class="calendar-grid"></div>
-        </article>
-      </section>
+        <!-- ═══ CALL LOGS PAGE ═══ -->
+        <section id="page-calls" class="page">
+          <div class="panel">
+            <div class="panel-head">
+              <h3 class="panel-title">Call Logs</h3>
+              <input id="calls-search" class="search-input" placeholder="Search phone or name…" type="search">
+            </div>
+            <div class="panel-body">
+              <table class="data-table">
+                <thead><tr><th>Caller</th><th>Phone</th><th>Duration</th><th>Summary</th><th>Date</th><th>Actions</th></tr></thead>
+                <tbody id="calls-body"><tr><td colspan="6" class="empty-cell">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
 
-      <section id="page-patients" class="page">
-        <article class="panel glass">
-          <div class="panel-head"><h3>Patients Directory</h3></div>
-          <div id="patients-cards" class="cards"></div>
-        </article>
-      </section>
-    </main>
+        <!-- ═══ ANALYTICS PAGE ═══ -->
+        <section id="page-analytics" class="page">
+          <div class="kpi-row">
+            <div class="kpi-card">
+              <div class="kpi-icon kpi-blue">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              </div>
+              <div class="kpi-body">
+                <div class="kpi-value" id="ana-duration">—</div>
+                <div class="kpi-label">Avg Duration</div>
+              </div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon kpi-green">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
+              </div>
+              <div class="kpi-body">
+                <div class="kpi-value" id="ana-booked">—</div>
+                <div class="kpi-label">Booked Calls</div>
+              </div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon kpi-purple">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+              </div>
+              <div class="kpi-body">
+                <div class="kpi-value" id="ana-connect">—</div>
+                <div class="kpi-label">Connect Rate</div>
+              </div>
+            </div>
+            <div class="kpi-card">
+              <div class="kpi-icon kpi-amber">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+              </div>
+              <div class="kpi-body">
+                <div class="kpi-value" id="ana-total">—</div>
+                <div class="kpi-label">Total Calls</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="two-col">
+            <div class="panel">
+              <div class="panel-head"><h3 class="panel-title">Daily Call Trend</h3></div>
+              <div class="panel-body" style="padding:24px 16px 16px">
+                <div id="daily-chart" class="bar-chart"></div>
+              </div>
+            </div>
+            <div class="panel">
+              <div class="panel-head"><h3 class="panel-title">Call Outcomes</h3></div>
+              <div class="panel-body">
+                <div id="outcomes-grid" class="outcomes-grid"></div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══ CRM PAGE ═══ -->
+        <section id="page-crm" class="page">
+          <div class="crm-layout">
+            <div class="panel crm-list-panel">
+              <div class="panel-head">
+                <h3 class="panel-title">Patient CRM</h3>
+                <input id="crm-search" class="search-input" placeholder="Search…" type="search">
+              </div>
+              <div class="panel-body no-pad">
+                <table class="data-table">
+                  <thead><tr><th>Name</th><th>Phone</th><th>Calls</th><th>Status</th></tr></thead>
+                  <tbody id="crm-body"><tr><td colspan="4" class="empty-cell">Loading…</td></tr></tbody>
+                </table>
+              </div>
+            </div>
+            <div class="panel crm-detail-panel" id="crm-detail-panel">
+              <div class="panel-head"><h3 class="panel-title">Caller Insights</h3></div>
+              <div class="panel-body" id="crm-details">
+                <div class="empty-state">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                  <p>Select a patient to view their call history and insights</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ═══ CALENDAR PAGE ═══ -->
+        <section id="page-calendar" class="page">
+          <div class="panel">
+            <div class="panel-head">
+              <h3 class="panel-title">Appointment Calendar</h3>
+              <div class="cal-nav">
+                <button class="icon-btn" id="cal-prev">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+                </button>
+                <span id="calendar-month-label" class="cal-month-label"></span>
+                <button class="icon-btn" id="cal-next">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="panel-body">
+              <div class="cal-weekdays">
+                <span>Sun</span><span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span>
+              </div>
+              <div id="calendar-grid" class="cal-grid"></div>
+            </div>
+          </div>
+          <div class="panel" id="cal-appts-panel">
+            <div class="panel-head"><h3 class="panel-title" id="cal-appts-title">All Appointments</h3></div>
+            <div class="panel-body">
+              <table class="data-table">
+                <thead><tr><th>Patient</th><th>Phone</th><th>Date & Time</th><th>Status</th></tr></thead>
+                <tbody id="cal-appts-body"><tr><td colspan="4" class="empty-cell">Loading…</td></tr></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+      </main>
+    </div>
   </div>
+
+  <!-- Transcript Modal -->
+  <div id="transcript-modal" class="modal-overlay" aria-hidden="true">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 class="modal-title">Call Transcript</h3>
+        <button class="icon-btn" id="modal-close">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <pre id="modal-content" class="transcript-text">Loading…</pre>
+      </div>
+      <div class="modal-foot">
+        <button class="btn btn-ghost" id="modal-close-2">Close</button>
+        <button class="btn btn-primary" id="modal-download">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" class="toast" aria-live="polite"></div>
+
   <script src="/static/app.js" defer></script>
 </body>
 </html>

@@ -1,404 +1,367 @@
+/* ═══════════════════════════════════════════════════
+   Sri Aakrithis AI Receptionist — Dashboard App
+   ═══════════════════════════════════════════════════ */
+
+'use strict';
+
+// ── State ────────────────────────────────────────────────────────────────────
 const state = {
-  logs: [],
-  contacts: [],
-  analytics: null,
-  bookings: [],
-  patients: [],
+  logs: [], bookings: [], contacts: [], analytics: null,
+  calYear: new Date().getFullYear(), calMonth: new Date().getMonth(),
+  calSelected: null, currentTranscriptId: null,
 };
 
-const PAGE_TITLES = {
-  overview: "🏠 Overview",
-  crm: "🧭 CRM",
-  analytics: "📈 Analytics",
-  calendar: "🗓️ Calendar",
-  patients: "🩺 Patients",
+// ── DOM helpers ───────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html !== undefined) e.innerHTML = html; return e; };
+const fmt = {
+  dur: s => s >= 60 ? `${Math.floor(s/60)}m ${s%60}s` : `${s}s`,
+  date: iso => { if (!iso) return '—'; try { return new Date(iso).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}); } catch { return iso; } },
+  time: iso => { if (!iso) return '—'; try { return new Date(iso).toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}); } catch { return iso; } },
+  datetime: iso => { if (!iso) return '—'; try { const d = new Date(iso); return d.toLocaleDateString('en-IN',{day:'2-digit',month:'short'}) + ' ' + d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}); } catch { return iso; } },
+  phone: p => p || '—',
+  initials: name => { if (!name || name === 'Unknown') return '?'; return name.split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2); },
+  avatarColor: str => { const colors = ['#4f8ef7','#3ecf8e','#a78bfa','#fbbf24','#f87171','#34d399','#60a5fa']; let h=0; for(let i=0;i<str.length;i++) h=(h*31+str.charCodeAt(i))&0xffffff; return colors[Math.abs(h)%colors.length]; },
+  reltime: iso => { if (!iso) return ''; const d = Date.now()-new Date(iso).getTime(); const m=Math.floor(d/60000); if(m<1) return 'just now'; if(m<60) return `${m}m ago`; const h=Math.floor(m/60); if(h<24) return `${h}h ago`; return `${Math.floor(h/24)}d ago`; },
 };
 
-function safeDate(value) {
-  if (!value) return "—";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime()) ? "—" : d.toLocaleString("en-IN");
+// ── API ───────────────────────────────────────────────────────────────────────
+async function api(path) {
+  try {
+    const r = await fetch(path);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch (e) { console.warn(`API ${path}:`, e); return null; }
 }
 
-function formatDateKeyIST(dateValue) {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Kolkata",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(dateValue);
-  const year = parts.find((p) => p.type === "year")?.value;
-  const month = parts.find((p) => p.type === "month")?.value;
-  const day = parts.find((p) => p.type === "day")?.value;
-  if (!year || !month || !day) return "";
-  return `${year}-${month}-${day}`;
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function toast(msg, dur=3000) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), dur);
 }
 
-function parseAppointmentDate(value) {
-  if (!value) return null;
-  const raw = String(value).trim();
-  if (!raw) return null;
+// ── Theme ─────────────────────────────────────────────────────────────────────
+let darkMode = localStorage.getItem('theme') !== 'light';
+function applyTheme() {
+  document.body.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+  $('theme-icon-moon').style.display = darkMode ? 'block' : 'none';
+  $('theme-icon-sun').style.display  = darkMode ? 'none'  : 'block';
+  localStorage.setItem('theme', darkMode ? 'dark' : 'light');
+}
+applyTheme();
+$('theme-toggle').addEventListener('click', () => { darkMode = !darkMode; applyTheme(); });
 
-  const matched = raw.match(
-    /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+\-]\d{2}:?\d{2})?$/i,
-  );
-  if (matched) {
-    const [, y, mo, da, hh, mm, ss = "00", zone = ""] = matched;
-    if (zone) {
-      const zoneNorm = zone === "Z" ? "Z" : (zone.includes(":") ? zone : `${zone.slice(0, 3)}:${zone.slice(3)}`);
-      const iso = `${y}-${mo}-${da}T${hh}:${mm}:${ss}${zoneNorm}`;
-      const zonedDate = new Date(iso);
-      if (!Number.isNaN(zonedDate.getTime())) return zonedDate;
-    } else {
-      // No timezone provided: treat the value as IST wall-clock time.
-      const utcMs = Date.UTC(Number(y), Number(mo) - 1, Number(da), Number(hh), Number(mm), Number(ss)) - (330 * 60 * 1000);
-      return new Date(utcMs);
-    }
-  }
+// ── Navigation ────────────────────────────────────────────────────────────────
+const pageMap = { overview:'Overview', calls:'Call Logs', analytics:'Analytics', crm:'CRM', calendar:'Appointments' };
+let activePage = 'overview';
+function navigate(page) {
+  if (!pageMap[page]) return;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  const pg = $(`page-${page}`); if (pg) pg.classList.add('active');
+  const nb = $(`nav-${page}`); if (nb) nb.classList.add('active');
+  $('page-title').textContent = pageMap[page];
+  activePage = page;
+  if (page === 'calendar') renderCalendar();
+  // close mobile sidebar
+  $('sidebar').classList.remove('open');
+}
+document.querySelectorAll('.nav-item').forEach(btn => {
+  btn.addEventListener('click', () => navigate(btn.dataset.page));
+});
 
-  const normalized = raw.replace(" ", "T");
-  const d = new Date(normalized);
-  return Number.isNaN(d.getTime()) ? null : d;
+// Mobile sidebar
+$('mobile-menu-btn').addEventListener('click', () => $('sidebar').classList.toggle('open'));
+
+// ── Refresh ───────────────────────────────────────────────────────────────────
+$('refresh-btn').addEventListener('click', () => { loadAll(); toast('Refreshed'); });
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+function openModal(logId) {
+  state.currentTranscriptId = logId;
+  const mo = $('transcript-modal'); mo.classList.add('open'); mo.setAttribute('aria-hidden','false');
+  $('modal-content').textContent = 'Loading…';
+  fetch(`/api/logs/${logId}/transcript`).then(r=>r.text()).then(t=>{ $('modal-content').textContent = t; }).catch(()=>{ $('modal-content').textContent = 'Failed to load transcript.'; });
+}
+function closeModal() {
+  $('transcript-modal').classList.remove('open');
+  $('transcript-modal').setAttribute('aria-hidden','true');
+}
+$('modal-close').addEventListener('click', closeModal);
+$('modal-close-2').addEventListener('click', closeModal);
+$('transcript-modal').addEventListener('click', e => { if (e.target === $('transcript-modal')) closeModal(); });
+$('modal-download').addEventListener('click', () => {
+  const txt = $('modal-content').textContent;
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([txt], {type:'text/plain'}));
+  a.download = `transcript_${state.currentTranscriptId || 'call'}.txt`;
+  a.click();
+});
+
+// ── Render: Overview KPIs ────────────────────────────────────────────────────
+function renderKPIs(stats, contactsLen) {
+  $('kpi-calls').textContent    = stats?.total_calls ?? '—';
+  $('kpi-bookings').textContent = stats?.total_bookings ?? '—';
+  $('kpi-patients').textContent = contactsLen ?? '—';
+  $('kpi-rate').textContent     = stats?.booking_rate != null ? `${stats.booking_rate}%` : '—';
 }
 
-function appointmentDateKeyIST(value) {
-  const d = parseAppointmentDate(value);
-  if (!d) return "";
-  return formatDateKeyIST(d);
+// ── Render: Upcoming Appointments (Overview) ─────────────────────────────────
+function renderOverviewAppointments() {
+  const tbody = $('overview-appointments');
+  const upcoming = state.bookings.filter(b => b.appointment_time && new Date(b.appointment_time) >= new Date()).slice(0,6);
+  $('appt-count').textContent = upcoming.length;
+  if (!upcoming.length) { tbody.innerHTML = `<tr><td colspan="3" class="empty-cell">No upcoming appointments</td></tr>`; return; }
+  tbody.innerHTML = upcoming.map(b => {
+    const name = b.caller_name || 'Unknown';
+    return `<tr>
+      <td><strong>${name}</strong></td>
+      <td>${fmt.datetime(b.appointment_time)}</td>
+      <td><span class="tag tag-green">Confirmed</span></td>
+    </tr>`;
+  }).join('');
 }
 
-function safeAppointmentDate(value) {
-  if (!value) return "Appointment time unavailable";
-  const d = parseAppointmentDate(value);
-  if (!d) return "Appointment time unavailable";
-  const formatted = new Intl.DateTimeFormat("en-IN", {
-    timeZone: "Asia/Kolkata",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  }).format(d);
-  return `${formatted} IST`;
-}
-
-function safeAppointmentTime(value) {
-  if (!value) return "Time unavailable";
-  const d = parseAppointmentDate(value);
-  if (!d) return "Time unavailable";
-  const formatted = new Intl.DateTimeFormat("en-IN", {
-    timeZone: "Asia/Kolkata",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  }).format(d);
-  return `${formatted} IST`;
-}
-
-function humanizeSummary(text) {
-  const raw = String(text || "").trim();
-  if (!raw) return "Call completed.";
-
-  const tryJsonExtract = (source) => {
-    const first = source.indexOf("{");
-    const last = source.lastIndexOf("}");
-    if (first >= 0 && last > first) {
-      try {
-        return JSON.parse(source.slice(first, last + 1));
-      } catch {
-        return null;
-      }
-    }
-    return null;
-  };
-
-  const asJson = tryJsonExtract(raw);
-  if (asJson && typeof asJson === "object") {
-    const msg = asJson.message || asJson.error || asJson.detail || "";
-    if (msg) return String(msg).replace(/_/g, " ");
-  }
-  return raw.replace(/\{"statusCode":[^}]+\}/g, "").replace(/\s{2,}/g, " ").trim();
-}
-
-function setPage(page) {
-  document.querySelectorAll(".nav-item").forEach((el) => {
-    el.classList.toggle("active", el.dataset.page === page);
+// ── Render: Recent Callers (Overview) ────────────────────────────────────────
+function renderOverviewPatients() {
+  const wrap = $('overview-patients');
+  const recent = state.contacts.slice(0, 8);
+  $('recent-count').textContent = recent.length;
+  if (!recent.length) { wrap.innerHTML = '<div class="empty-state"><p>No callers yet</p></div>'; return; }
+  wrap.innerHTML = '';
+  recent.forEach(c => {
+    const name = c.caller_name || c.phone_number || 'Unknown';
+    const color = fmt.avatarColor(name);
+    const div = el('div', 'recent-caller');
+    div.innerHTML = `
+      <div class="caller-avatar" style="background:${color}22;color:${color}">${fmt.initials(name)}</div>
+      <div class="recent-caller-info">
+        <div class="recent-caller-name">${name}</div>
+        <div class="recent-caller-phone">${fmt.phone(c.phone_number)}</div>
+      </div>
+      <div class="recent-caller-time">${fmt.reltime(c.last_seen)}</div>`;
+    wrap.appendChild(div);
   });
-  document.querySelectorAll(".page").forEach((el) => {
-    el.classList.toggle("active", el.id === `page-${page}`);
-  });
-  document.body.setAttribute("data-current-page", page);
-  document.getElementById("page-title").textContent = PAGE_TITLES[page] || page;
 }
 
-function tag(text, klass = "") {
-  return `<span class="tag ${klass}">${text}</span>`;
+// ── Render: Call Logs ─────────────────────────────────────────────────────────
+function renderCallLogs(filter='') {
+  const tbody = $('calls-body');
+  const fl = filter.toLowerCase();
+  const rows = state.logs.filter(l => !fl || (l.phone_number||'').includes(fl) || (l.caller_name||'').toLowerCase().includes(fl));
+  if (!rows.length) { tbody.innerHTML = `<tr><td colspan="6" class="empty-cell">No call logs found</td></tr>`; return; }
+  tbody.innerHTML = rows.map(l => {
+    const name = l.caller_name || 'Unknown';
+    const dur  = l.duration_seconds ? fmt.dur(l.duration_seconds) : '—';
+    const sum  = l.summary ? l.summary.slice(0,60)+(l.summary.length>60?'…':'') : '—';
+    return `<tr>
+      <td><strong>${name}</strong></td>
+      <td><span style="font-family:var(--mono);font-size:11px">${fmt.phone(l.phone_number)}</span></td>
+      <td>${dur}</td>
+      <td title="${l.summary||''}">${sum}</td>
+      <td>${fmt.date(l.created_at)}</td>
+      <td><button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="openModal('${l.id}')">Transcript</button></td>
+    </tr>`;
+  }).join('');
 }
+$('calls-search').addEventListener('input', e => renderCallLogs(e.target.value));
 
-function renderOverview() {
-  const callsToday = state.logs.filter((r) => (r.created_at || "").slice(0, 10) === new Date().toISOString().slice(0, 10)).length;
-  const appointments = state.bookings.length;
-  const patients = state.contacts.length;
-  const bookingRate = state.analytics?.kpis?.booking_rate ?? 0;
+// ── Render: Analytics ─────────────────────────────────────────────────────────
+function renderAnalytics() {
+  const a = state.analytics;
+  if (!a) return;
+  const k = a.kpis || {};
+  $('ana-duration').textContent = k.avg_duration != null ? fmt.dur(k.avg_duration) : '—';
+  $('ana-booked').textContent   = k.booked_calls ?? '—';
+  $('ana-connect').textContent  = k.connect_rate != null ? `${k.connect_rate}%` : '—';
+  $('ana-total').textContent    = k.total_calls ?? '—';
 
-  document.getElementById("kpi-calls").textContent = callsToday;
-  document.getElementById("kpi-bookings").textContent = appointments;
-  document.getElementById("kpi-patients").textContent = patients;
-  document.getElementById("kpi-rate").textContent = `${bookingRate}%`;
-
-  const activeCalls = state.logs.filter((r) => !r.summary || String(r.summary).trim() === "").length;
-  document.getElementById("active-calls-pill").textContent = `${activeCalls} Active Calls`;
-
-  const appBody = document.getElementById("overview-appointments");
-  const now = new Date();
-  const topBookings = state.bookings
-    .map((b) => ({ ...b, parsedAppointment: parseAppointmentDate(b.appointment_time) }))
-    .filter((b) => b.parsedAppointment && b.parsedAppointment.getTime() >= now.getTime())
-    .sort((a, b) => a.parsedAppointment.getTime() - b.parsedAppointment.getTime())
-    .slice(0, 6);
-  if (!topBookings.length) {
-    appBody.innerHTML = `<tr><td colspan="3">No appointments yet.</td></tr>`;
-  } else {
-    appBody.innerHTML = topBookings.map((b) => `
-      <tr>
-        <td>${b.phone_number || "Unknown"}</td>
-        <td>${safeAppointmentTime(b.appointment_time)}</td>
-        <td>${tag("Confirmed", "ok")}</td>
-      </tr>
-    `).join("");
+  // Bar chart
+  const daily = a.daily_series || [];
+  const chartEl = $('daily-chart');
+  if (!daily.length) { chartEl.innerHTML = '<div class="empty-state" style="height:140px"><p>No data yet</p></div>'; }
+  else {
+    const max = Math.max(...daily.map(d=>d.calls), 1);
+    chartEl.innerHTML = '';
+    daily.forEach(d => {
+      const pct = Math.max(4, Math.round((d.calls/max)*100));
+      const label = d.date ? d.date.slice(5) : '';
+      const wrap = el('div','bar-wrap');
+      const bar = el('div','bar'); bar.style.height = `${pct}%`; bar.dataset.val = `${d.calls} calls`;
+      const lbl = el('div','bar-label',label);
+      wrap.appendChild(bar); wrap.appendChild(lbl); chartEl.appendChild(wrap);
+    });
   }
 
-  const recentPatients = document.getElementById("overview-patients");
-  const topPatients = state.patients.slice(0, 5);
-  recentPatients.innerHTML = topPatients.length
-    ? topPatients.map((p) => `
-      <div class="list-item">
-        <div class="avatar-placeholder">${(p.name || "?").slice(0, 1).toUpperCase()}</div>
+  // Outcomes
+  const og = $('outcomes-grid'); og.innerHTML = '';
+  const outcomes = a.outcomes || {};
+  const total = Object.values(outcomes).reduce((s,v)=>s+v,0) || 1;
+  const oColors = { booked:'var(--green)', completed:'var(--blue)', cancelled:'var(--amber)', unknown:'var(--text-3)' };
+  Object.entries(outcomes).forEach(([k,v]) => {
+    const pct = Math.round((v/total)*100);
+    const row = el('div','outcome-row');
+    row.innerHTML = `
+      <span class="outcome-label">${k.charAt(0).toUpperCase()+k.slice(1)}</span>
+      <div class="outcome-track"><div class="outcome-fill" style="width:${pct}%;background:${oColors[k]||'var(--blue)'}"></div></div>
+      <span class="outcome-val">${v}</span>`;
+    og.appendChild(row);
+  });
+}
+
+// ── Render: CRM ───────────────────────────────────────────────────────────────
+function renderCRM(filter='') {
+  const tbody = $('crm-body');
+  const fl = filter.toLowerCase();
+  const rows = state.contacts.filter(c => !fl || (c.phone_number||'').includes(fl) || (c.caller_name||'').toLowerCase().includes(fl));
+  if (!rows.length) { tbody.innerHTML = `<tr><td colspan="4" class="empty-cell">No contacts found</td></tr>`; return; }
+  tbody.innerHTML = rows.map((c,i) => {
+    const name = c.caller_name || 'Unknown';
+    const status = c.is_booked ? '<span class="tag tag-green">Booked</span>' : '<span class="tag tag-gray">Lead</span>';
+    return `<tr class="clickable" data-idx="${i}" onclick="showCRMDetail(${i})">
+      <td><strong>${name}</strong></td>
+      <td><span style="font-family:var(--mono);font-size:11px">${fmt.phone(c.phone_number)}</span></td>
+      <td>${c.total_calls || 1}</td>
+      <td>${status}</td>
+    </tr>`;
+  }).join('');
+}
+$('crm-search').addEventListener('input', e => renderCRM(e.target.value));
+
+function showCRMDetail(idx) {
+  const c = state.contacts[idx]; if (!c) return;
+  const name = c.caller_name || 'Unknown';
+  const color = fmt.avatarColor(name);
+  const relLogs = state.logs.filter(l => l.phone_number === c.phone_number).slice(0,5);
+  const histHtml = relLogs.length ? relLogs.map(l => `
+    <div class="call-history-item">
+      <div class="call-hist-date">${fmt.datetime(l.created_at)} · ${l.duration_seconds ? fmt.dur(l.duration_seconds) : '—'}</div>
+      <div class="call-hist-summary">${l.summary || 'No summary'}</div>
+      ${l.id ? `<button class="call-hist-btn" onclick="openModal('${l.id}')">View Transcript</button>` : ''}
+    </div>`).join('')
+    : '<div class="call-history-item"><div class="call-hist-summary">No call history found</div></div>';
+
+  $('crm-details').innerHTML = `
+    <div class="caller-card">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px">
+        <div class="caller-avatar" style="width:46px;height:46px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;background:${color}22;color:${color}">${fmt.initials(name)}</div>
         <div>
-          <strong>${p.name}</strong><br>
-          <small>${p.phone_number} • last seen ${safeDate(p.last_seen)}</small>
+          <div class="caller-name">${name}</div>
+          <div class="caller-phone">${fmt.phone(c.phone_number)}</div>
         </div>
       </div>
-    `).join("")
-    : `<div class="list-item"><div class="avatar-placeholder">?</div><small>No patients yet.</small></div>`;
-}
-
-function renderCRM(filtered) {
-  const rows = filtered ?? state.contacts;
-  const tbody = document.getElementById("crm-body");
-  if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="5">No CRM contacts found.</td></tr>`;
-    document.getElementById("crm-details").innerHTML = `<div class="crm-details-empty">No CRM data available yet.</div>`;
-    return;
-  }
-  tbody.innerHTML = rows.map((c) => `
-    <tr class="crm-row" data-phone="${c.phone_number || ""}">
-      <td>${c.caller_name || "Unknown"}</td>
-      <td>${c.phone_number || "—"}</td>
-      <td>${c.total_calls || 0}</td>
-      <td>${safeDate(c.last_seen)}</td>
-      <td>${c.is_booked ? tag("Booked", "ok") : tag("Pending", "warn")}</td>
-    </tr>
-  `).join("");
-}
-
-function renderCRMDetails(phone) {
-  const details = document.getElementById("crm-details");
-  const person = state.contacts.find((c) => c.phone_number === phone);
-  const calls = state.logs
-    .filter((l) => (l.phone_number || "") === phone)
-    .sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-
-  if (!person) {
-    details.innerHTML = `<div class="crm-details-empty">Select a person in CRM Pipeline to see call purpose and summaries.</div>`;
-    return;
-  }
-
-  if (!calls.length) {
-    details.innerHTML = `<div class="crm-details-empty">No call history found for this contact.</div>`;
-    return;
-  }
-
-  details.innerHTML = `
-    <div style="margin-bottom:10px;">
-      <strong>${person.caller_name || "Unknown"}</strong><br>
-      <small>${person.phone_number || "—"} • ${person.total_calls || 0} calls</small>
+      <div class="caller-meta">
+        <span class="tag ${c.is_booked?'tag-green':'tag-gray'}">${c.is_booked?'Booked':'Lead'}</span>
+        <span class="tag tag-blue">${c.total_calls||1} call${(c.total_calls||1)>1?'s':''}</span>
+        <span class="tag tag-amber">Last: ${fmt.reltime(c.last_seen)}</span>
+      </div>
     </div>
-    <div class="crm-call-history">
-      ${calls.map((call) => `
-        <div class="crm-call-item">
-          <div class="crm-meta">${safeDate(call.created_at)} • ${call.duration_seconds || 0}s</div>
-          <div class="crm-purpose">${call.call_purpose || person.latest_purpose || "General conversation"}</div>
-          <div class="crm-summary">${humanizeSummary(call.call_summary || call.summary || person.latest_summary || "Call completed.")}</div>
-          <div class="crm-recording">
-            ${((call.recording_url || call.recordingUrl || "").trim())
-              ? `
-                <audio class="crm-audio" controls preload="none" src="${(call.recording_url || call.recordingUrl || "").trim()}"></audio>
-              `
-              : `<small class="crm-recording-empty">Recording unavailable for this call.</small>`
-            }
-          </div>
-        </div>
-      `).join("")}
-    </div>
-  `;
+    <div style="font-size:12px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.07em;margin:12px 0 4px">Call History</div>
+    ${histHtml}`;
 }
 
-function renderAnalytics() {
-  const ana = state.analytics || { kpis: {}, outcomes: {}, daily_series: [] };
-  document.getElementById("ana-connect").textContent = `${ana.kpis.connect_rate || 0}%`;
-  document.getElementById("ana-duration").textContent = `${ana.kpis.avg_duration || 0}s`;
-  document.getElementById("ana-booked").textContent = ana.kpis.booked_calls || 0;
-  document.getElementById("ana-total").textContent = ana.kpis.total_calls || 0;
-
-  const chart = document.getElementById("daily-chart");
-  const daily = ana.daily_series || [];
-  const max = Math.max(1, ...daily.map((x) => x.calls || 0));
-  chart.innerHTML = daily.length
-    ? daily.map((x) => {
-      const h = Math.max(12, Math.round(((x.calls || 0) / max) * 180));
-      const shortDate = String(x.date || "").slice(5);
-      return `
-        <div class="chart-col" title="${x.date}: ${x.calls}">
-          <div class="bar" style="height:${h}px"></div>
-          <div class="bar-label">${shortDate}</div>
-        </div>
-      `;
-    }).join("")
-    : `<small>No trend data yet.</small>`;
-
-  const out = ana.outcomes || {};
-  document.getElementById("outcomes-grid").innerHTML = [
-    ["Booked", out.booked || 0],
-    ["Cancelled", out.cancelled || 0],
-    ["Completed", out.completed || 0],
-    ["Unknown", out.unknown || 0],
-  ].map(([k, v]) => `<div class="outcome"><span>${k}</span><strong>${v}</strong></div>`).join("");
-}
-
+// ── Render: Calendar ─────────────────────────────────────────────────────────
 function renderCalendar() {
-  const monthEl = document.getElementById("calendar-month");
-  const grid = document.getElementById("calendar-grid");
-  const now = new Date();
-  const y = now.getFullYear();
-  const m = now.getMonth();
-  monthEl.textContent = now.toLocaleString("en-IN", { month: "long", year: "numeric" });
-  const todayKey = formatDateKeyIST(now);
+  const { calYear: y, calMonth: m } = state;
+  const label = new Date(y, m, 1).toLocaleDateString('en-IN',{month:'long',year:'numeric'});
+  $('calendar-month-label').textContent = label;
 
-  const first = new Date(y, m, 1);
-  const last = new Date(y, m + 1, 0);
-  const byDate = {};
-  state.bookings.forEach((b) => {
-    const d = appointmentDateKeyIST(b.appointment_time);
-    if (!d) return;
-    byDate[d] = (byDate[d] || 0) + 1;
+  const firstDay = new Date(y, m, 1).getDay();
+  const daysInMonth = new Date(y, m+1, 0).getDate();
+  const today = new Date();
+
+  // Build lookup of appointment dates
+  const apptDates = {};
+  state.bookings.forEach(b => {
+    if (!b.appointment_time) return;
+    const d = new Date(b.appointment_time);
+    if (d.getFullYear()===y && d.getMonth()===m) {
+      const key = d.getDate(); apptDates[key] = (apptDates[key]||0)+1;
+    }
   });
 
-  const cells = [];
-  for (let i = 0; i < first.getDay(); i++) cells.push(`<div class="cal-cell"></div>`);
-  for (let day = 1; day <= last.getDate(); day++) {
-    const ds = `${y}-${String(m + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const count = byDate[ds] || 0;
-    const todayBadge = ds === todayKey ? `<span class="today-dot" aria-hidden="true"></span>` : "";
-    const todayClass = ds === todayKey ? " today" : "";
-    cells.push(`<div class="cal-cell"><div class="cal-day${todayClass}">${day}${todayBadge}</div>${count ? `<div class="cal-count">${count} booking${count > 1 ? "s" : ""}</div>` : ""}</div>`);
+  const grid = $('calendar-grid'); grid.innerHTML = '';
+
+  // Leading blanks
+  for (let i=0; i<firstDay; i++) { grid.appendChild(el('div','cal-day other-month','')); }
+
+  for (let d=1; d<=daysInMonth; d++) {
+    const isToday = today.getDate()===d && today.getMonth()===m && today.getFullYear()===y;
+    const hasAppt = !!apptDates[d];
+    const isSelected = state.calSelected === `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+    let cls = 'cal-day';
+    if (isToday) cls += ' today';
+    if (hasAppt) cls += ' has-appt';
+    if (isSelected) cls += ' selected';
+    const cell = el('div', cls);
+    cell.innerHTML = `<span>${d}</span>${hasAppt?`<div class="cal-dot"></div>`:''}`;
+    if (hasAppt || true) {
+      const dateKey = `${y}-${String(m+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+      cell.addEventListener('click', () => { state.calSelected = dateKey; renderCalendar(); renderCalAppts(dateKey); });
+    }
+    grid.appendChild(cell);
   }
-  grid.innerHTML = cells.join("");
+
+  renderCalAppts(state.calSelected);
 }
 
-function renderPatients() {
-  const container = document.getElementById("patients-cards");
-  if (!state.patients.length) {
-    container.innerHTML = `<div class="patient-card"><small>No patients available.</small></div>`;
-    return;
+function renderCalAppts(dateKey) {
+  const tbody = $('cal-appts-body');
+  const title = $('cal-appts-title');
+  let appts = state.bookings;
+  if (dateKey) {
+    title.textContent = `Appointments — ${fmt.date(dateKey)}`;
+    appts = state.bookings.filter(b => b.appointment_time && b.appointment_time.startsWith(dateKey));
+  } else {
+    title.textContent = 'All Appointments';
   }
-  container.innerHTML = state.patients.map((p) => `
-    <article class="patient-card">
-      <strong>${p.name}</strong><br>
-      <small>${p.phone_number}</small>
-      <div style="margin-top:8px;"><small>Calls: ${p.total_calls} • Engagement: ${p.engagement}</small></div>
-      <div style="margin-top:8px;">${p.booked ? tag("Booked", "ok") : tag("No booking", "warn")}</div>
-    </article>
-  `).join("");
+  if (!appts.length) { tbody.innerHTML = `<tr><td colspan="4" class="empty-cell">No appointments${dateKey?' on this day':''}</td></tr>`; return; }
+  tbody.innerHTML = appts.map(b => `<tr>
+    <td><strong>${b.caller_name||'Unknown'}</strong></td>
+    <td><span style="font-family:var(--mono);font-size:11px">${fmt.phone(b.phone_number)}</span></td>
+    <td>${fmt.datetime(b.appointment_time)}</td>
+    <td><span class="tag tag-green">Confirmed</span></td>
+  </tr>`).join('');
 }
 
-async function bootstrapData() {
-  const [logs, contacts, bookings, analytics, patients] = await Promise.all([
-    fetch("/api/logs").then((r) => r.json()).catch(() => []),
-    fetch("/api/contacts").then((r) => r.json()).catch(() => []),
-    fetch("/api/bookings").then((r) => r.json()).catch(() => []),
-    fetch("/api/analytics").then((r) => r.json()).catch(() => ({})),
-    fetch("/api/patients").then((r) => r.json()).catch(() => []),
+// Calendar nav
+$('cal-prev').addEventListener('click', () => { state.calMonth--; if(state.calMonth<0){state.calMonth=11;state.calYear--;} renderCalendar(); });
+$('cal-next').addEventListener('click', () => { state.calMonth++; if(state.calMonth>11){state.calMonth=0;state.calYear++;} renderCalendar(); });
+
+// ── Orb: avg duration ─────────────────────────────────────────────────────────
+function updateOrbStats(analytics) {
+  const avg = analytics?.kpis?.avg_duration;
+  $('orb-avg-dur').textContent = avg != null ? fmt.dur(avg) : '—';
+  // Active calls — no real socket, fake 0 for now
+  $('active-calls-count').textContent = '0';
+}
+
+// ── Load All Data ─────────────────────────────────────────────────────────────
+async function loadAll() {
+  const [logs, bookings, contacts, stats, analytics] = await Promise.all([
+    api('/api/logs'),
+    api('/api/bookings'),
+    api('/api/contacts'),
+    api('/api/stats'),
+    api('/api/analytics'),
   ]);
-  state.logs = Array.isArray(logs) ? logs : [];
-  state.contacts = Array.isArray(contacts) ? contacts : [];
-  state.bookings = Array.isArray(bookings) ? bookings : [];
-  state.analytics = analytics || {};
-  state.patients = Array.isArray(patients) ? patients : [];
 
-  renderOverview();
-  renderCRM();
+  state.logs      = logs     || [];
+  state.bookings  = bookings || [];
+  state.contacts  = contacts || [];
+  state.analytics = analytics;
+
+  renderKPIs(stats, state.contacts.length);
+  renderOverviewAppointments();
+  renderOverviewPatients();
+  renderCallLogs($('calls-search').value);
   renderAnalytics();
-  renderCalendar();
-  renderPatients();
+  renderCRM($('crm-search').value);
+  if (activePage === 'calendar') renderCalendar();
+  updateOrbStats(analytics);
 }
 
-function setupSearch() {
-  const input = document.getElementById("crm-search");
-  input.addEventListener("input", () => {
-    const q = input.value.trim().toLowerCase();
-    if (!q) return renderCRM();
-    renderCRM(state.contacts.filter((c) => {
-      const name = String(c.caller_name || "").toLowerCase();
-      const phone = String(c.phone_number || "").toLowerCase();
-      return name.includes(q) || phone.includes(q);
-    }));
-  });
-}
-
-function setupCRMClicks() {
-  document.getElementById("crm-body").addEventListener("click", (e) => {
-    const row = e.target.closest("tr.crm-row");
-    if (!row) return;
-    renderCRMDetails(row.dataset.phone || "");
-  });
-}
-
-function setupTheme() {
-  const key = "rapidx-theme";
-  const icon = document.getElementById("theme-icon");
-  const refreshThemeIcon = () => {
-    const mode = document.body.getAttribute("data-theme") || "dark";
-    icon.textContent = mode === "dark" ? "🌙" : "☀️";
-  };
-  const saved = localStorage.getItem(key);
-  if (saved === "light" || saved === "dark") {
-    document.body.setAttribute("data-theme", saved);
-  }
-  refreshThemeIcon();
-  document.getElementById("theme-toggle").addEventListener("click", () => {
-    const next = document.body.getAttribute("data-theme") === "dark" ? "light" : "dark";
-    document.body.setAttribute("data-theme", next);
-    localStorage.setItem(key, next);
-    refreshThemeIcon();
-  });
-}
-
-function setupNavigation() {
-  document.getElementById("nav").addEventListener("click", (e) => {
-    const btn = e.target.closest(".nav-item");
-    if (!btn) return;
-    setPage(btn.dataset.page);
-  });
-}
-
-window.addEventListener("DOMContentLoaded", async () => {
-  document.body.setAttribute("data-current-page", "overview");
-  setupTheme();
-  setupNavigation();
-  setupSearch();
-  setupCRMClicks();
-  await bootstrapData();
-  setInterval(bootstrapData, 30000);
-});
+// ── Init ──────────────────────────────────────────────────────────────────────
+loadAll();
+// Auto-refresh every 60 seconds
+setInterval(loadAll, 60000);
