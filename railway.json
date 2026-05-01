@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "uvicorn ui_server:app --host 0.0.0.0 --port $PORT --workers 1",
+    "startCommand": "bash start.sh",
     "healthcheckPath": "/health",
     "healthcheckTimeout": 90,
     "restartPolicyType": "ON_FAILURE",
