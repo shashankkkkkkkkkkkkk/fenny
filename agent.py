@@ -252,11 +252,18 @@ async def entrypoint(ctx: JobContext):
     min_ep = max(0.05, min(float(live_config.get("stt_min_endpointing_delay",0.08)),0.20))
     max_ep = max(min_ep, min(float(live_config.get("stt_max_endpointing_delay",3.5)),3.5))
 
-    agent_stt = sarvam.STT(language=stt_lang, model="saaras:v3", mode="translate", flush_signal=True, sample_rate=16000)
-    agent_tts = sarvam.TTS(target_language_code=tts_lang, model="bulbul:v3", speaker=tts_voice, speech_sample_rate=24000, enable_preprocessing=True)
+    agent_stt = sarvam.STT(language=stt_lang, model="saaras:v3", mode="translate", flush_signal=True)
+    agent_tts = sarvam.TTS(target_language_code=tts_lang, model="bulbul:v3", speaker=tts_voice, enable_preprocessing=True)
+    agent_vad = silero.VAD.load(min_speech_duration=0.1, min_silence_duration=1.0)
 
     agent = VoiceAssistant(agent_tools=agent_tools, live_config=live_config)
-    session = AgentSession(stt=agent_stt, llm=agent_llm, tts=agent_tts, turn_detection="stt", min_endpointing_delay=min_ep, max_endpointing_delay=max_ep, allow_interruptions=True)
+    session = AgentSession(
+        stt=agent_stt, 
+        llm=agent_llm, 
+        tts=agent_tts, 
+        vad=agent_vad,
+        allow_interruptions=True
+    )
     await session.start(room=ctx.room, agent=agent, room_input_options=RoomInputOptions(close_on_disconnect=False))
     logger.info("[AGENT] Session live.")
 
