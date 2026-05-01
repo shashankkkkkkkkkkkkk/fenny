@@ -76,27 +76,64 @@ $('mobile-menu-btn').addEventListener('click', () => $('sidebar').classList.togg
 // ── Refresh ───────────────────────────────────────────────────────────────────
 $('refresh-btn').addEventListener('click', () => { loadAll(); toast('Refreshed'); });
 
-// ── Modal ─────────────────────────────────────────────────────────────────────
-function openModal(logId) {
+// ── Slideover Panel (Replaces Modal) ──────────────────────────────────────────
+function openSlideover(logId) {
   state.currentTranscriptId = logId;
-  const mo = $('transcript-modal'); mo.classList.add('open'); mo.setAttribute('aria-hidden','false');
-  $('modal-content').textContent = 'Loading…';
-  fetch(`/api/logs/${logId}/transcript`).then(r=>r.text()).then(t=>{ $('modal-content').textContent = t; }).catch(()=>{ $('modal-content').textContent = 'Failed to load transcript.'; });
+  const overlay = $('slideover-overlay');
+  overlay.classList.add('open');
+  
+  // Find the log details
+  const log = state.logs.find(l => l.id === logId) || {};
+  const sum = log.summary || 'No summary available.';
+  const recUrl = log.recording_url || null;
+  const sentiment = log.sentiment || 'neutral';
+  
+  $('slideover-title').textContent = (log.caller_name || 'Unknown') + ' - ' + fmt.date(log.created_at);
+  $('slideover-summary').textContent = sum;
+  
+  // Sentiment Badge
+  const badgeColors = { positive: 'tag-green', negative: 'tag-red', neutral: 'tag-gray' };
+  $('slideover-badge').className = `tag ${badgeColors[sentiment] || 'tag-gray'}`;
+  $('slideover-badge').textContent = sentiment.charAt(0).toUpperCase() + sentiment.slice(1);
+
+  // Audio Player
+  const audioContainer = $('audio-player-container');
+  const audioEl = $('call-audio');
+  if (recUrl) {
+    audioEl.src = recUrl;
+    audioContainer.style.display = 'flex';
+  } else {
+    audioEl.src = '';
+    audioContainer.style.display = 'none';
+  }
+
+  // Transcript
+  const tc = $('slideover-transcript');
+  tc.innerHTML = '<div class="chat-meta">Loading transcript...</div>';
+  fetch(`/api/logs/${logId}/transcript`)
+    .then(r => r.text())
+    .then(t => { 
+      if (!t || t.trim()==='') { tc.innerHTML = '<div class="chat-meta">No transcript available.</div>'; return; }
+      const lines = t.split('\n').filter(l=>l.trim());
+      tc.innerHTML = lines.map(line => {
+        const isUser = line.startsWith('[USER]');
+        const isAssistant = line.startsWith('[ASSISTANT]');
+        const content = line.replace(/\[USER\]|\[ASSISTANT\]/g, '').trim();
+        if (isUser) return `<div class="chat-bubble chat-user">${content}<span class="chat-meta">Caller</span></div>`;
+        if (isAssistant) return `<div class="chat-bubble chat-ai">${content}<span class="chat-meta">Aria</span></div>`;
+        return `<div class="chat-bubble chat-ai">${line}</div>`;
+      }).join('');
+    })
+    .catch(() => { tc.innerHTML = '<div class="chat-meta">Failed to load transcript.</div>'; });
 }
-function closeModal() {
-  $('transcript-modal').classList.remove('open');
-  $('transcript-modal').setAttribute('aria-hidden','true');
+
+function closeSlideover() {
+  $('slideover-overlay').classList.remove('open');
+  $('call-audio').pause(); // stop audio when closed
 }
-$('modal-close').addEventListener('click', closeModal);
-$('modal-close-2').addEventListener('click', closeModal);
-$('transcript-modal').addEventListener('click', e => { if (e.target === $('transcript-modal')) closeModal(); });
-$('modal-download').addEventListener('click', () => {
-  const txt = $('modal-content').textContent;
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([txt], {type:'text/plain'}));
-  a.download = `transcript_${state.currentTranscriptId || 'call'}.txt`;
-  a.click();
-});
+
+$('slideover-close').addEventListener('click', closeSlideover);
+$('slideover-overlay').addEventListener('click', closeSlideover);
 
 // ── Render: Overview KPIs ────────────────────────────────────────────────────
 function renderKPIs(stats, contactsLen) {
@@ -146,7 +183,7 @@ function renderOverviewPatients() {
 
 // ── Render: Call Logs ─────────────────────────────────────────────────────────
 function renderCallLogs(filter='') {
-  const tbody = $('calls-body');
+  const tbody = $('calls-tbody');
   const fl = filter.toLowerCase();
   const rows = state.logs.filter(l => !fl || (l.phone_number||'').includes(fl) || (l.caller_name||'').toLowerCase().includes(fl));
   if (!rows.length) { tbody.innerHTML = `<tr><td colspan="6" class="empty-cell">No call logs found</td></tr>`; return; }
@@ -154,17 +191,33 @@ function renderCallLogs(filter='') {
     const name = l.caller_name || 'Unknown';
     const dur  = l.duration_seconds ? fmt.dur(l.duration_seconds) : '—';
     const sum  = l.summary ? l.summary.slice(0,60)+(l.summary.length>60?'…':'') : '—';
+    
+    // Sentiment Badge
+    let sentimentBadge = '<span class="tag tag-gray">Neutral</span>';
+    if (l.sentiment === 'positive') sentimentBadge = '<span class="tag tag-green">Positive</span>';
+    if (l.sentiment === 'negative') sentimentBadge = '<span class="tag tag-red">Negative</span>';
+    if (l.sentiment === 'frustrated') sentimentBadge = '<span class="tag tag-red">Frustrated</span>';
+
     return `<tr>
-      <td><strong>${name}</strong></td>
-      <td><span style="font-family:var(--mono);font-size:11px">${fmt.phone(l.phone_number)}</span></td>
+      <td>${fmt.datetime(l.created_at)}</td>
+      <td>
+        <strong>${name}</strong><br>
+        <span style="font-family:var(--mono);font-size:11px;color:var(--text-3)">${fmt.phone(l.phone_number)}</span>
+      </td>
       <td>${dur}</td>
+      <td>${sentimentBadge}</td>
       <td title="${l.summary||''}">${sum}</td>
-      <td>${fmt.date(l.created_at)}</td>
-      <td><button class="btn btn-ghost" style="padding:4px 8px;font-size:11px" onclick="openModal('${l.id}')">Transcript</button></td>
+      <td>
+        <button class="btn btn-ghost" style="padding:6px 12px;font-size:11px" onclick="openSlideover('${l.id}')">View Details</button>
+      </td>
     </tr>`;
   }).join('');
 }
 $('calls-search').addEventListener('input', e => renderCallLogs(e.target.value));
+
+// ── Global Chart Instances ──────────────────────────────────────────────────────
+let dailyChartInstance = null;
+let outcomesChartInstance = null;
 
 // ── Render: Analytics ─────────────────────────────────────────────────────────
 function renderAnalytics() {
@@ -176,37 +229,77 @@ function renderAnalytics() {
   $('ana-connect').textContent  = k.connect_rate != null ? `${k.connect_rate}%` : '—';
   $('ana-total').textContent    = k.total_calls ?? '—';
 
-  // Bar chart
+  // Bar Chart for Daily Calls
   const daily = a.daily_series || [];
-  const chartEl = $('daily-chart');
-  if (!daily.length) { chartEl.innerHTML = '<div class="empty-state" style="height:140px"><p>No data yet</p></div>'; }
-  else {
-    const max = Math.max(...daily.map(d=>d.calls), 1);
-    chartEl.innerHTML = '';
-    daily.forEach(d => {
-      const pct = Math.max(4, Math.round((d.calls/max)*100));
-      const label = d.date ? d.date.slice(5) : '';
-      const wrap = el('div','bar-wrap');
-      const bar = el('div','bar'); bar.style.height = `${pct}%`; bar.dataset.val = `${d.calls} calls`;
-      const lbl = el('div','bar-label',label);
-      wrap.appendChild(bar); wrap.appendChild(lbl); chartEl.appendChild(wrap);
+  const ctxDaily = document.getElementById('daily-chart');
+  if (ctxDaily && daily.length) {
+    const labels = daily.map(d => d.date.slice(5)); // MM-DD
+    const data = daily.map(d => d.calls);
+    
+    if (dailyChartInstance) dailyChartInstance.destroy();
+    dailyChartInstance = new Chart(ctxDaily, {
+      type: 'line',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Calls',
+          data: data,
+          borderColor: '#4f8ef7',
+          backgroundColor: 'rgba(79, 142, 247, 0.2)',
+          borderWidth: 2,
+          pointBackgroundColor: '#a78bfa',
+          pointBorderColor: '#fff',
+          pointHoverBackgroundColor: '#fff',
+          pointHoverBorderColor: '#a78bfa',
+          fill: true,
+          tension: 0.4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { mode: 'index', intersect: false, backgroundColor: 'rgba(17,18,23,0.9)', titleColor: '#fff', bodyColor: '#fff', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1 }
+        },
+        scales: {
+          x: { grid: { display: false, drawBorder: false }, ticks: { color: '#9196a8', font: { family: 'Inter', size: 11 } } },
+          y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false }, ticks: { color: '#9196a8', font: { family: 'Inter', size: 11 }, precision: 0 } }
+        }
+      }
     });
   }
 
-  // Outcomes
-  const og = $('outcomes-grid'); og.innerHTML = '';
+  // Doughnut Chart for Outcomes
   const outcomes = a.outcomes || {};
-  const total = Object.values(outcomes).reduce((s,v)=>s+v,0) || 1;
-  const oColors = { booked:'var(--green)', completed:'var(--blue)', cancelled:'var(--amber)', unknown:'var(--text-3)' };
-  Object.entries(outcomes).forEach(([k,v]) => {
-    const pct = Math.round((v/total)*100);
-    const row = el('div','outcome-row');
-    row.innerHTML = `
-      <span class="outcome-label">${k.charAt(0).toUpperCase()+k.slice(1)}</span>
-      <div class="outcome-track"><div class="outcome-fill" style="width:${pct}%;background:${oColors[k]||'var(--blue)'}"></div></div>
-      <span class="outcome-val">${v}</span>`;
-    og.appendChild(row);
-  });
+  const ctxOutcomes = document.getElementById('outcomes-chart');
+  if (ctxOutcomes && Object.keys(outcomes).length) {
+    const labels = Object.keys(outcomes).map(k => k.charAt(0).toUpperCase() + k.slice(1));
+    const data = Object.values(outcomes);
+    
+    if (outcomesChartInstance) outcomesChartInstance.destroy();
+    outcomesChartInstance = new Chart(ctxOutcomes, {
+      type: 'doughnut',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: data,
+          backgroundColor: ['#3ecf8e', '#4f8ef7', '#fbbf24', '#f87171', '#a78bfa'],
+          borderWidth: 0,
+          hoverOffset: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: '75%',
+        plugins: {
+          legend: { position: 'right', labels: { color: '#e8eaf0', usePointStyle: true, padding: 20, font: { family: 'Inter', size: 12 } } },
+          tooltip: { backgroundColor: 'rgba(17,18,23,0.9)', titleColor: '#fff', bodyColor: '#fff', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1 }
+        }
+      }
+    });
+  }
 }
 
 // ── Render: CRM ───────────────────────────────────────────────────────────────
@@ -237,7 +330,7 @@ function showCRMDetail(idx) {
     <div class="call-history-item">
       <div class="call-hist-date">${fmt.datetime(l.created_at)} · ${l.duration_seconds ? fmt.dur(l.duration_seconds) : '—'}</div>
       <div class="call-hist-summary">${l.summary || 'No summary'}</div>
-      ${l.id ? `<button class="call-hist-btn" onclick="openModal('${l.id}')">View Transcript</button>` : ''}
+      ${l.id ? `<button class="call-hist-btn" onclick="openSlideover('${l.id}')">View Details</button>` : ''}
     </div>`).join('')
     : '<div class="call-history-item"><div class="call-hist-summary">No call history found</div></div>';
 

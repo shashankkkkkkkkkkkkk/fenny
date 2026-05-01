@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
@@ -115,7 +116,6 @@
                 <div class="kpi-value" id="kpi-calls">—</div>
                 <div class="kpi-label">Total Calls</div>
               </div>
-              <div class="kpi-trend up" id="kpi-calls-trend"></div>
             </div>
             <div class="kpi-card" id="kpi-bookings-card">
               <div class="kpi-icon kpi-green">
@@ -192,17 +192,30 @@
           </div>
         </section>
 
-        <!-- ═══ CALL LOGS PAGE ═══ -->
+        <!-- ═══ CALLS PAGE ═══ -->
         <section id="page-calls" class="page">
           <div class="panel">
             <div class="panel-head">
-              <h3 class="panel-title">Call Logs</h3>
-              <input id="calls-search" class="search-input" placeholder="Search phone or name…" type="search">
+              <h3 class="panel-title">Inbound & Outbound Calls</h3>
+              <div class="panel-actions">
+                <input type="text" id="calls-search" class="search-input" placeholder="Search phone or summary...">
+              </div>
             </div>
-            <div class="panel-body">
+            <div class="panel-body no-pad">
               <table class="data-table">
-                <thead><tr><th>Caller</th><th>Phone</th><th>Duration</th><th>Summary</th><th>Date</th><th>Actions</th></tr></thead>
-                <tbody id="calls-body"><tr><td colspan="6" class="empty-cell">Loading…</td></tr></tbody>
+                <thead>
+                  <tr>
+                    <th>Date & Time</th>
+                    <th>Caller</th>
+                    <th>Duration</th>
+                    <th>Sentiment</th>
+                    <th>Summary</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody id="calls-tbody">
+                  <tr><td colspan="6" class="empty-cell">Loading call logs...</td></tr>
+                </tbody>
               </table>
             </div>
           </div>
@@ -252,14 +265,14 @@
           <div class="two-col">
             <div class="panel">
               <div class="panel-head"><h3 class="panel-title">Daily Call Trend</h3></div>
-              <div class="panel-body" style="padding:24px 16px 16px">
-                <div id="daily-chart" class="bar-chart"></div>
+              <div class="panel-body" style="padding:24px 16px 16px; height: 250px;">
+                <canvas id="daily-chart"></canvas>
               </div>
             </div>
             <div class="panel">
               <div class="panel-head"><h3 class="panel-title">Call Outcomes</h3></div>
-              <div class="panel-body">
-                <div id="outcomes-grid" class="outcomes-grid"></div>
+              <div class="panel-body" style="padding:24px 16px 16px; height: 250px; display:flex; justify-content:center;">
+                <canvas id="outcomes-chart"></canvas>
               </div>
             </div>
           </div>
@@ -329,24 +342,35 @@
     </div>
   </div>
 
-  <!-- Transcript Modal -->
-  <div id="transcript-modal" class="modal-overlay" aria-hidden="true">
-    <div class="modal">
-      <div class="modal-head">
-        <h3 class="modal-title">Call Transcript</h3>
-        <button class="icon-btn" id="modal-close">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-        </button>
+  <!-- Slide-over Panel for Call Details & Recording -->
+  <div class="slideover-overlay" id="slideover-overlay"></div>
+  <div class="slideover" id="slideover">
+    <div class="slideover-header">
+      <div class="slideover-title-row">
+        <h2 id="slideover-title">Call Details</h2>
+        <div id="slideover-badge" class="badge"></div>
       </div>
-      <div class="modal-body">
-        <pre id="modal-content" class="transcript-text">Loading…</pre>
+      <button class="icon-btn" id="slideover-close" title="Close">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="slideover-body">
+      <!-- Recording Player -->
+      <div class="audio-player-card" id="audio-player-container" style="display:none;">
+        <div class="audio-meta">
+          <div class="audio-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg></div>
+          <span>Call Recording</span>
+        </div>
+        <audio id="call-audio" controls class="custom-audio"></audio>
       </div>
-      <div class="modal-foot">
-        <button class="btn btn-ghost" id="modal-close-2">Close</button>
-        <button class="btn btn-primary" id="modal-download">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Download
-        </button>
+
+      <div class="slideover-section">
+        <h3>Summary</h3>
+        <p id="slideover-summary" class="slide-text"></p>
+      </div>
+      <div class="slideover-section">
+        <h3>Transcript</h3>
+        <div id="slideover-transcript" class="chat-container"></div>
       </div>
     </div>
   </div>
