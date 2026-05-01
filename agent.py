@@ -393,12 +393,26 @@ async def entrypoint(ctx: JobContext):
 
 
 if __name__ == "__main__":
-    cli.run_app(
-        WorkerOptions(
-            entrypoint_fnc=entrypoint,
-            agent_name="outbound-caller",
-            ws_url=os.environ.get("LIVEKIT_URL", ""),
-            api_key=os.environ.get("LIVEKIT_API_KEY", ""),
-            api_secret=os.environ.get("LIVEKIT_API_SECRET", ""),
-        )
+    import sys
+    from livekit.agents.worker import Worker
+
+    lk_url    = os.environ.get("LIVEKIT_URL", "")
+    lk_key    = os.environ.get("LIVEKIT_API_KEY", "")
+    lk_secret = os.environ.get("LIVEKIT_API_SECRET", "")
+
+    print(f"[agent] LIVEKIT_URL  : '{lk_url[:40] if lk_url else 'NOT SET'}'")
+    print(f"[agent] API_KEY      : '{lk_key[:10] if lk_key else 'NOT SET'}'...")
+    print(f"[agent] API_SECRET   : '{'SET' if lk_secret else 'NOT SET'}'")
+
+    if not lk_url or not lk_key or not lk_secret:
+        print("[agent] FATAL: LiveKit credentials missing. Check Railway Variables.")
+        sys.exit(1)
+
+    opts = WorkerOptions(
+        entrypoint_fnc=entrypoint,
+        agent_name="outbound-caller",
+        ws_url=lk_url,
+        api_key=lk_key,
+        api_secret=lk_secret,
     )
+    asyncio.run(Worker(opts).run())
