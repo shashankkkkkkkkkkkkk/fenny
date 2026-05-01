@@ -410,7 +410,6 @@ if __name__ == "__main__":
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
-            agent_name="outbound-caller",
             ws_url=lk_url,
             api_key=lk_key,
             api_secret=lk_secret,
