@@ -261,7 +261,7 @@ async def entrypoint(ctx: JobContext):
         stt=agent_stt, 
         llm=agent_llm, 
         tts=agent_tts, 
-        vad=agent_vad,
+        turn_detector=agent_vad,
         allow_interruptions=True
     )
     await session.start(room=ctx.room, agent=agent, room_input_options=RoomInputOptions(close_on_disconnect=False))
