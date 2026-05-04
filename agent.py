@@ -158,7 +158,7 @@ class VoiceAssistant(Agent):
         if tts_lang in TTS_SCRIPT:
             pfx = TTS_PREFIX.get(tts_lang,"नमस्ते")
             tts_note = f"\n\n[TTS] Always include one native-script word per reply. Prepend '{pfx}' when needed."
-        instructions = base + get_ist_time_context() + f"\n\n[LANGUAGE]\n{preset['instruction']}" + tts_note + tool_note
+        instructions = get_ist_time_context() + "\n\n" + base + f"\n\n[LANGUAGE]\n{preset['instruction']}" + tts_note + tool_note
         tok = count_tokens(instructions)
         logger.info(f"[PROMPT] {tok} tokens")
         if tok > 600: logger.warning("[PROMPT] >600 tokens — consider trimming")
@@ -238,9 +238,9 @@ async def entrypoint(ctx: JobContext):
     max_tok = max(40, min(int(live_config.get("llm_max_completion_tokens",80)), 160))
     candidates = []
     if gemini_key:
-        candidates.append(openai.LLM(model=live_config.get("gemini_model","gemini-2.0-flash"), base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=gemini_key, max_completion_tokens=max_tok))
+        candidates.append(openai.LLM(model=live_config.get("gemini_model","gemini-2.0-flash"), base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=gemini_key, max_completion_tokens=max_tok, temperature=0.3))
     if groq_key:
-        candidates.append(openai.LLM(model=live_config.get("groq_model","llama-3.3-70b-versatile"), base_url="https://api.groq.com/openai/v1", api_key=groq_key, max_completion_tokens=max_tok))
+        candidates.append(openai.LLM(model=live_config.get("groq_model","llama-3.3-70b-versatile"), base_url="https://api.groq.com/openai/v1", api_key=groq_key, max_completion_tokens=max_tok, temperature=0.3))
     if not candidates: logger.error("[LLM] No provider configured."); return
     agent_llm = candidates[0] if len(candidates)==1 else llm.FallbackAdapter(llm=candidates,attempt_timeout=4.0,max_retry_per_llm=0,retry_interval=0.2,retry_on_chunk_sent=False)
     logger.info(f"[LLM] Providers: {len(candidates)}")
@@ -254,7 +254,7 @@ async def entrypoint(ctx: JobContext):
 
     agent_stt = sarvam.STT(language=stt_lang, model="saaras:v3", mode="translate", flush_signal=True)
     agent_tts = sarvam.TTS(target_language_code=tts_lang, model="bulbul:v3", speaker=tts_voice, enable_preprocessing=True)
-    agent_vad = silero.VAD.load(min_speech_duration=0.1, min_silence_duration=1.0)
+    agent_vad = silero.VAD.load(min_speech_duration=0.05, min_silence_duration=0.7)
 
     agent = VoiceAssistant(agent_tools=agent_tools, live_config=live_config)
     session = AgentSession(
