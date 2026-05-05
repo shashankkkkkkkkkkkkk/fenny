@@ -42,13 +42,31 @@ def get_ist_time_context():
     )
 
 LANG_PRESETS = {
-    "hinglish":    {"tts_language":"hi-IN","tts_voice":"kavya","stt_language":"hi-IN","instruction":"Speak natural Hinglish — mix Hindi and English naturally. Never switch to only English."},
+    "hinglish":    {"tts_language":"hi-IN","tts_voice":"kavya","stt_language":"hi-IN","instruction":"Speak natural Hinglish — mix Hindi and English naturally."},
     "hindi":       {"tts_language":"hi-IN","tts_voice":"ritu","stt_language":"hi-IN","instruction":"Respond in pure Hindi only. Keep it warm and professional."},
-    "english":     {"tts_language":"en-IN","tts_voice":"anushka","stt_language":"en-IN","instruction":"Respond in Indian English. Warm, professional, concise."},
+    "english":     {"tts_language":"en-IN","tts_voice":"anushka","stt_language":"en-IN","instruction":"Respond in Indian English only. Warm, professional, concise."},
     "tamil":       {"tts_language":"ta-IN","tts_voice":"priya","stt_language":"ta-IN","instruction":"Respond ONLY in Tamil. Keep it warm and professional."},
     "telugu":      {"tts_language":"te-IN","tts_voice":"kavya","stt_language":"te-IN","instruction":"Respond ONLY in Telugu. Keep it warm and professional."},
     "kannada":     {"tts_language":"kn-IN","tts_voice":"rahul","stt_language":"kn-IN","instruction":"Respond ONLY in Kannada. Keep it warm and professional."},
-    "multilingual":{"tts_language":"en-IN","tts_voice":"anushka","stt_language":"unknown","instruction":"Detect the caller's language from their FIRST message and respond ONLY in that language for the entire call. If they speak Hindi or Hinglish, reply in Hinglish. If Telugu, reply in Telugu. If Tamil, reply in Tamil. If Kannada, reply in Kannada. If English, reply in English. Never mix languages unless the caller does."},
+    # Multilingual default for Bengaluru: kavya voice handles Telugu and Hindi naturally.
+    # STT uses translate mode so intent always arrives as English to the LLM.
+    # The LLM must infer caller language from context and respond accordingly.
+    "multilingual":{
+        "tts_language":"te-IN",
+        "tts_voice":"kavya",
+        "stt_language":"unknown",
+        "instruction":(
+            "LANGUAGE DETECTION RULES:\n"
+            "The speech-to-text system translates all caller speech into English before you see it. "
+            "You must detect the caller's original language from their word choices, names, and phrasing.\n"
+            "- If their words suggest Telugu (common in Bengaluru): respond ONLY in Telugu.\n"
+            "- If their words suggest Kannada: respond ONLY in Kannada.\n"
+            "- If they clearly speak Hindi or Hinglish: respond in Hinglish.\n"
+            "- If they clearly speak English: respond in English.\n"
+            "Once you detect the language, STAY in that language for the entire call.\n"
+            "When uncertain, default to Telugu since most callers are from Bengaluru/Hyderabad."
+        )
+    },
 }
 
 TTS_SCRIPT = {"hi-IN":r"[\u0900-\u097F]","mr-IN":r"[\u0900-\u097F]","bn-IN":r"[\u0980-\u09FF]","gu-IN":r"[\u0A80-\u0AFF]","ta-IN":r"[\u0B80-\u0BFF]","te-IN":r"[\u0C00-\u0C7F]","kn-IN":r"[\u0C80-\u0CFF]","ml-IN":r"[\u0D00-\u0D7F]"}
@@ -198,13 +216,36 @@ async def entrypoint(ctx: JobContext):
     caller_name = ""; caller_phone = "unknown"; participant_phone = None
 
     for identity, participant in ctx.room.remote_participants.items():
-        if participant.name and participant.name not in ("","Caller","Unknown"): caller_name = participant.name
+        if participant.name and participant.name not in ("","Caller","Unknown"):
+            caller_name = participant.name
         if not participant_phone:
             attr = participant.attributes or {}
-            participant_phone = attr.get("sip.phoneNumber") or attr.get("phoneNumber")
-        if not participant_phone and "+" in identity:
-            m = re.search(r"\+\d{7,15}", identity)
-            if m: participant_phone = m.group()
+            # Try all known SIP attribute keys from various providers
+            participant_phone = (
+                attr.get("sip.phoneNumber")
+                or attr.get("sip.callerId")
+                or attr.get("sip.caller")
+                or attr.get("sip.from")
+                or attr.get("sip.userAgent")
+                or attr.get("phoneNumber")
+                or attr.get("caller_id")
+                or attr.get("from")
+            )
+            # Strip sip: prefix if present
+            if participant_phone and participant_phone.startswith("sip:"):
+                participant_phone = participant_phone.split("@")[0].replace("sip:","")
+        if not participant_phone:
+            for key in ["+", "tel:"]:
+                if key in identity:
+                    m = re.search(r"\+?\d{7,15}", identity)
+                    if m:
+                        participant_phone = m.group()
+                        break
+            # Also check if identity itself looks like a phone
+            if not participant_phone:
+                m = re.search(r"\d{10,15}", identity)
+                if m and len(m.group()) >= 10:
+                    participant_phone = m.group()
 
     dispatch_phone = None
     if ctx.job.metadata:
@@ -239,7 +280,17 @@ async def entrypoint(ctx: JobContext):
         return ""
 
     history = await get_history(caller_phone)
-    if history: live_config["agent_instructions"] = live_config.get("agent_instructions","") + history
+    # Build dynamic caller context for the prompt
+    caller_context = ""
+    if caller_phone and caller_phone != "unknown":
+        caller_context += f"\n\n[CALLER INFO] The caller's phone number is {caller_phone}. Do NOT ask for their phone number — it is already known."
+    else:
+        caller_context += "\n\n[CALLER INFO] Caller phone number is unknown from caller ID. You must collect their contact number during the conversation."
+    if caller_name:
+        caller_context += f" The caller's name is {caller_name}."
+    if history:
+        caller_context += history
+    live_config["agent_instructions"] = live_config.get("agent_instructions","") + caller_context
 
     agent_tools = AgentTools(caller_phone=caller_phone, caller_name=caller_name)
     agent_tools._sip_identity = f"sip_{caller_phone.replace('+','')}" if caller_phone != "unknown" else "inbound_caller"
@@ -288,12 +339,12 @@ async def entrypoint(ctx: JobContext):
     preset = LANG_PRESETS.get(lang_preset, LANG_PRESETS["multilingual"])
     tts_voice = live_config.get("tts_voice") or preset["tts_voice"]
     tts_lang  = live_config.get("tts_language") or preset["tts_language"]
-    # Use preset STT language; 'unknown' = auto-detect by Sarvam
     stt_lang  = live_config.get("stt_language") or preset.get("stt_language", "unknown")
     max_turns = int(live_config.get("max_turns", 40))
 
-    # STT: use 'transcribe' mode so native language text is preserved for TTS routing
-    agent_stt = sarvam.STT(language=stt_lang, model="saaras:v3", mode="transcribe")
+    # STT: translate mode gives reliable English intent for all Indian languages.
+    # The LLM then knows the intent and responds in the correct language.
+    agent_stt = sarvam.STT(language=stt_lang, model="saaras:v3", mode="translate")
     agent_tts = sarvam.TTS(target_language_code=tts_lang, model="bulbul:v3", speaker=tts_voice, enable_preprocessing=True)
     agent_vad = silero.VAD.load(min_speech_duration=0.05, min_silence_duration=0.6)
 
