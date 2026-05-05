@@ -13,6 +13,10 @@ logging.basicConfig(level=logging.INFO)
 from livekit import api
 from livekit.agents import Agent, AgentSession, JobContext, RoomInputOptions, WorkerOptions, cli, llm
 from livekit.plugins import openai, sarvam, silero
+try:
+    from livekit.plugins import anthropic as lk_anthropic
+except ImportError:
+    lk_anthropic = None
 
 from config_manager import get_config as get_live_config
 
@@ -237,8 +241,33 @@ async def entrypoint(ctx: JobContext):
     groq_key = os.environ.get("GROQ_API_KEY","")
     max_tok = max(40, min(int(live_config.get("llm_max_completion_tokens",80)), 160))
     candidates = []
+
+    # 1. AWS Bedrock Claude (first priority if configured)
+    aws_key = os.environ.get("AWS_ACCESS_KEY_ID","")
+    aws_secret = os.environ.get("AWS_SECRET_ACCESS_KEY","")
+    aws_region = os.environ.get("AWS_REGION","us-east-1")
+    bedrock_model = os.environ.get("BEDROCK_MODEL_ID","anthropic.claude-3-haiku-20240307-v1:0")
+    if aws_key and aws_secret and lk_anthropic:
+        try:
+            from anthropic import AnthropicBedrock
+            bedrock_client = AnthropicBedrock(
+                aws_access_key=aws_key,
+                aws_secret_key=aws_secret,
+                aws_region=aws_region,
+            )
+            candidates.append(lk_anthropic.LLM(
+                model=bedrock_model,
+                client=bedrock_client,
+                temperature=0.3,
+            ))
+            logger.info(f"[LLM] Bedrock Claude ready: {bedrock_model}")
+        except Exception as e:
+            logger.warning(f"[LLM] Bedrock init failed: {e} — falling back")
+
+    # 2. Gemini
     if gemini_key:
         candidates.append(openai.LLM(model=live_config.get("gemini_model","gemini-2.0-flash"), base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=gemini_key, max_completion_tokens=max_tok, temperature=0.3))
+    # 3. Groq fallback
     if groq_key:
         candidates.append(openai.LLM(model=live_config.get("groq_model","llama-3.3-70b-versatile"), base_url="https://api.groq.com/openai/v1", api_key=groq_key, max_completion_tokens=max_tok, temperature=0.3))
     if not candidates: logger.error("[LLM] No provider configured."); return

@@ -8,6 +8,8 @@ livekit-api
 livekit-plugins-openai
 livekit-plugins-sarvam
 livekit-plugins-silero
+livekit-plugins-anthropic
+boto3
 certifi
 pytz
 requests
