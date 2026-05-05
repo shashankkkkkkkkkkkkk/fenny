@@ -42,17 +42,13 @@ def get_ist_time_context():
     )
 
 LANG_PRESETS = {
-    "hinglish":    {"tts_language":"hi-IN","tts_voice":"kavya","instruction":"Speak natural Hinglish — mix Hindi and English."},
-    "hindi":       {"tts_language":"hi-IN","tts_voice":"ritu","instruction":"Speak only pure Hindi."},
-    "english":     {"tts_language":"en-IN","tts_voice":"dev","instruction":"Speak Indian English, warm and professional."},
-    "tamil":       {"tts_language":"ta-IN","tts_voice":"priya","instruction":"Speak only Tamil."},
-    "telugu":      {"tts_language":"te-IN","tts_voice":"kavya","instruction":"Speak only Telugu."},
-    "gujarati":    {"tts_language":"gu-IN","tts_voice":"rohan","instruction":"Speak only Gujarati."},
-    "bengali":     {"tts_language":"bn-IN","tts_voice":"neha","instruction":"Speak only Bengali."},
-    "marathi":     {"tts_language":"mr-IN","tts_voice":"shubh","instruction":"Speak only Marathi."},
-    "kannada":     {"tts_language":"kn-IN","tts_voice":"rahul","instruction":"Speak only Kannada."},
-    "malayalam":   {"tts_language":"ml-IN","tts_voice":"ritu","instruction":"Speak only Malayalam."},
-    "multilingual":{"tts_language":"hi-IN","tts_voice":"kavya","instruction":"Detect caller language from first message and reply in that language. Supported: Hindi, Hinglish, English, Tamil, Telugu, Gujarati, Bengali, Marathi, Kannada, Malayalam."},
+    "hinglish":    {"tts_language":"hi-IN","tts_voice":"kavya","stt_language":"hi-IN","instruction":"Speak natural Hinglish — mix Hindi and English naturally. Never switch to only English."},
+    "hindi":       {"tts_language":"hi-IN","tts_voice":"ritu","stt_language":"hi-IN","instruction":"Respond in pure Hindi only. Keep it warm and professional."},
+    "english":     {"tts_language":"en-IN","tts_voice":"anushka","stt_language":"en-IN","instruction":"Respond in Indian English. Warm, professional, concise."},
+    "tamil":       {"tts_language":"ta-IN","tts_voice":"priya","stt_language":"ta-IN","instruction":"Respond ONLY in Tamil. Keep it warm and professional."},
+    "telugu":      {"tts_language":"te-IN","tts_voice":"kavya","stt_language":"te-IN","instruction":"Respond ONLY in Telugu. Keep it warm and professional."},
+    "kannada":     {"tts_language":"kn-IN","tts_voice":"rahul","stt_language":"kn-IN","instruction":"Respond ONLY in Kannada. Keep it warm and professional."},
+    "multilingual":{"tts_language":"en-IN","tts_voice":"anushka","stt_language":"unknown","instruction":"Detect the caller's language from their FIRST message and respond ONLY in that language for the entire call. If they speak Hindi or Hinglish, reply in Hinglish. If Telugu, reply in Telugu. If Tamil, reply in Tamil. If Kannada, reply in Kannada. If English, reply in English. Never mix languages unless the caller does."},
 }
 
 TTS_SCRIPT = {"hi-IN":r"[\u0900-\u097F]","mr-IN":r"[\u0900-\u097F]","bn-IN":r"[\u0980-\u09FF]","gu-IN":r"[\u0A80-\u0AFF]","ta-IN":r"[\u0B80-\u0BFF]","te-IN":r"[\u0C00-\u0C7F]","kn-IN":r"[\u0C80-\u0CFF]","ml-IN":r"[\u0D00-\u0D7F]"}
@@ -153,24 +149,38 @@ class VoiceAssistant(Agent):
     def __init__(self, agent_tools, live_config):
         self._live_config = live_config
         self._agent_tools = agent_tools
-        base = live_config.get("agent_instructions","")
-        lang_preset = live_config.get("lang_preset","multilingual")
+        base = live_config.get("agent_instructions", "")
+        lang_preset = live_config.get("lang_preset", "multilingual")
         preset = LANG_PRESETS.get(lang_preset, LANG_PRESETS["multilingual"])
-        tts_lang = live_config.get("tts_language", preset["tts_language"])
-        tool_note = "\n\n[TOOL SAFETY] Call tools only with valid args. Never invent missing fields. Ask caller if anything missing."
-        tts_note = ""
-        if tts_lang in TTS_SCRIPT:
-            pfx = TTS_PREFIX.get(tts_lang,"नमस्ते")
-            tts_note = f"\n\n[TTS] Always include one native-script word per reply. Prepend '{pfx}' when needed."
-        instructions = get_ist_time_context() + "\n\n" + base + f"\n\n[LANGUAGE]\n{preset['instruction']}" + tts_note + tool_note
+
+        lang_instruction = preset["instruction"]
+        time_context = get_ist_time_context()
+        tool_safety = (
+            "\n\n## TOOL RULES\n"
+            "- save_booking_intent: call ONLY when you have confirmed name, phone, date, time from the caller.\n"
+            "- check_availability: call to look up free slots before booking.\n"
+            "- end_call: call ONLY when caller says goodbye or after booking is fully confirmed.\n"
+            "- Never invent or guess any argument — ask the caller if missing."
+        )
+
+        instructions = (
+            time_context + "\n\n" +
+            base +
+            f"\n\n## ACTIVE LANGUAGE MODE\n{lang_instruction}" +
+            tool_safety
+        )
+
         tok = count_tokens(instructions)
         logger.info(f"[PROMPT] {tok} tokens")
-        if tok > 600: logger.warning("[PROMPT] >600 tokens — consider trimming")
+        if tok > 800:
+            logger.warning("[PROMPT] >800 tokens — consider trimming")
+
         super().__init__(instructions=instructions, tools=llm.find_function_tools(agent_tools))
 
     async def on_enter(self):
-        greeting = self._live_config.get("first_line","Hello! How can I help you today?")
-        greeting = enforce_tts(greeting, self._live_config.get("tts_language","en-IN"))
+        greeting = self._live_config.get("first_line", "Hello! How can I help you today?")
+        # Strip dashes that confuse TTS
+        greeting = greeting.replace("—", ", ").replace("–", ", ")
         await (self.session.say(greeting, add_to_chat_ctx=True)).wait_for_playout()
 
 
@@ -274,24 +284,28 @@ async def entrypoint(ctx: JobContext):
     agent_llm = candidates[0] if len(candidates)==1 else llm.FallbackAdapter(llm=candidates,attempt_timeout=4.0,max_retry_per_llm=0,retry_interval=0.2,retry_on_chunk_sent=False)
     logger.info(f"[LLM] Providers: {len(candidates)}")
 
-    tts_voice = live_config.get("tts_voice","kavya")
-    tts_lang = live_config.get("tts_language","en-IN")
-    stt_lang = live_config.get("stt_language","unknown")
-    max_turns = int(live_config.get("max_turns",30))
-    min_ep = max(0.05, min(float(live_config.get("stt_min_endpointing_delay",0.08)),0.20))
-    max_ep = max(min_ep, min(float(live_config.get("stt_max_endpointing_delay",3.5)),3.5))
+    lang_preset = live_config.get("lang_preset", "multilingual")
+    preset = LANG_PRESETS.get(lang_preset, LANG_PRESETS["multilingual"])
+    tts_voice = live_config.get("tts_voice") or preset["tts_voice"]
+    tts_lang  = live_config.get("tts_language") or preset["tts_language"]
+    # Use preset STT language; 'unknown' = auto-detect by Sarvam
+    stt_lang  = live_config.get("stt_language") or preset.get("stt_language", "unknown")
+    max_turns = int(live_config.get("max_turns", 40))
 
-    agent_stt = sarvam.STT(language=stt_lang, model="saaras:v3", mode="translate", flush_signal=True)
+    # STT: use 'transcribe' mode so native language text is preserved for TTS routing
+    agent_stt = sarvam.STT(language=stt_lang, model="saaras:v3", mode="transcribe")
     agent_tts = sarvam.TTS(target_language_code=tts_lang, model="bulbul:v3", speaker=tts_voice, enable_preprocessing=True)
-    agent_vad = silero.VAD.load(min_speech_duration=0.05, min_silence_duration=0.7)
+    agent_vad = silero.VAD.load(min_speech_duration=0.05, min_silence_duration=0.6)
 
     agent = VoiceAssistant(agent_tools=agent_tools, live_config=live_config)
     session = AgentSession(
-        stt=agent_stt, 
-        llm=agent_llm, 
-        tts=agent_tts, 
-        turn_detector=agent_vad,
-        allow_interruptions=True
+        stt=agent_stt,
+        llm=agent_llm,
+        tts=agent_tts,
+        vad=agent_vad,
+        allow_interruptions=True,
+        min_endpointing_delay=0.5,
+        max_endpointing_delay=3.0,
     )
     await session.start(room=ctx.room, agent=agent, room_input_options=RoomInputOptions(close_on_disconnect=False))
     logger.info("[AGENT] Session live.")
