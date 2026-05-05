@@ -3,10 +3,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DEFAULT_FIRST_LINE = "Sri Aakrithis Dental Lounge ki aapka swagat hai. Main Aria hoon — aaj main aapki kaise madad kar sakti hoon?"
+DEFAULT_FIRST_LINE = "Namaste! Sri Aakrithis Dental Lounge mein aapka swagat hai. Main Aria hoon — aaj main aapki kaise madad kar sakti hoon?"
 
-# Telugu greeting (used when LANG_PRESET=telugu)
+# Language-specific greetings available via FIRST_LINE env var override
 DEFAULT_FIRST_LINE_TELUGU = "Sri Aakrithis Dental Lounge ki pampinanduku dhanyavaadaalu. Nenu Aria — meeru ela help cheyyaali?"
+DEFAULT_FIRST_LINE_ENGLISH = "Thank you for calling Sri Aakrithis Dental Lounge. This is Aria — how may I help you today?"
 
 DEFAULT_AGENT_INSTRUCTIONS = """You are Aria, an AI receptionist for Sri Aakrithis Dental Lounge and Maxillofacial Center in Bengaluru.
 

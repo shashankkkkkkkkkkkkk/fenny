@@ -48,23 +48,23 @@ LANG_PRESETS = {
     "tamil":       {"tts_language":"ta-IN","tts_voice":"priya","stt_language":"ta-IN","instruction":"Respond ONLY in Tamil. Keep it warm and professional."},
     "telugu":      {"tts_language":"te-IN","tts_voice":"kavya","stt_language":"te-IN","instruction":"Respond ONLY in Telugu. Keep it warm and professional."},
     "kannada":     {"tts_language":"kn-IN","tts_voice":"rahul","stt_language":"kn-IN","instruction":"Respond ONLY in Kannada. Keep it warm and professional."},
-    # Multilingual default for Bengaluru: kavya voice handles Telugu and Hindi naturally.
-    # STT uses translate mode so intent always arrives as English to the LLM.
-    # The LLM must infer caller language from context and respond accordingly.
+    # Multilingual: hi-IN/kavya is Sarvam's most balanced Indian multilingual voice.
+    # STT translates all Indian languages to English (reliable).
+    # LLM detects original language from caller's word choice and responds accordingly.
     "multilingual":{
-        "tts_language":"te-IN",
+        "tts_language":"hi-IN",
         "tts_voice":"kavya",
         "stt_language":"unknown",
         "instruction":(
-            "LANGUAGE DETECTION RULES:\n"
-            "The speech-to-text system translates all caller speech into English before you see it. "
-            "You must detect the caller's original language from their word choices, names, and phrasing.\n"
-            "- If their words suggest Telugu (common in Bengaluru): respond ONLY in Telugu.\n"
-            "- If their words suggest Kannada: respond ONLY in Kannada.\n"
-            "- If they clearly speak Hindi or Hinglish: respond in Hinglish.\n"
-            "- If they clearly speak English: respond in English.\n"
-            "Once you detect the language, STAY in that language for the entire call.\n"
-            "When uncertain, default to Telugu since most callers are from Bengaluru/Hyderabad."
+            "LANGUAGE DETECTION:\n"
+            "The STT system translates all caller speech to English before you see it. "
+            "Detect the caller's ORIGINAL language from their tone, names, phrasing, and any untranslated words.\n"
+            "- If they use English words/names naturally: respond in clear Indian English.\n"
+            "- If they mix Hindi words or use 'haan/aur/kya': respond in Hinglish (Hindi+English mix).\n"
+            "- If their name or greeting suggests Telugu ('meeru', 'cheppandi', etc.): respond in Telugu.\n"
+            "- If they use Kannada cues ('nimma', 'illa', etc.): respond in Kannada.\n"
+            "- If Tamil cues detected: respond in Tamil.\n"
+            "Stay in that language for the entire call. When genuinely unsure, respond in Hinglish — it works for most Indian callers."
         )
     },
 }
