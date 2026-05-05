@@ -212,14 +212,3 @@ async def root():
             return HTMLResponse(f.read())
     return HTMLResponse("<h1>Aria Dashboard</h1><p>Frontend not found.</p>")
 
-@app.get("/api/dev-nuke-db")
-async def dev_nuke():
-    sb = _get_sb()
-    if not sb: return "NO DB"
-    try:
-        sb.table("call_logs").delete().neq("id", -1).execute()
-        sb.table("call_transcripts").delete().neq("phone", "nobody").execute()
-        sb.table("active_calls").delete().neq("room_id", "nothing").execute()
-        return "ALL DATA DELETED!"
-    except Exception as e:
-        return f"Error: {e}"
