@@ -319,7 +319,7 @@ async def entrypoint(ctx: JobContext):
             candidates.append(lk_anthropic.LLM(
                 model=bedrock_model,
                 client=bedrock_client,
-                temperature=0.3,
+                temperature=0.1,
             ))
             logger.info(f"[LLM] Bedrock Claude ready: {bedrock_model}")
         except Exception as e:
@@ -327,10 +327,10 @@ async def entrypoint(ctx: JobContext):
 
     # 2. Gemini
     if gemini_key:
-        candidates.append(openai.LLM(model=live_config.get("gemini_model","gemini-2.0-flash"), base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=gemini_key, max_completion_tokens=max_tok, temperature=0.3))
+        candidates.append(openai.LLM(model=live_config.get("gemini_model","gemini-2.0-flash"), base_url="https://generativelanguage.googleapis.com/v1beta/openai/", api_key=gemini_key, max_completion_tokens=max_tok, temperature=0.1))
     # 3. Groq fallback
     if groq_key:
-        candidates.append(openai.LLM(model=live_config.get("groq_model","llama-3.3-70b-versatile"), base_url="https://api.groq.com/openai/v1", api_key=groq_key, max_completion_tokens=max_tok, temperature=0.3))
+        candidates.append(openai.LLM(model=live_config.get("groq_model","llama-3.3-70b-versatile"), base_url="https://api.groq.com/openai/v1", api_key=groq_key, max_completion_tokens=max_tok, temperature=0.1))
     if not candidates: logger.error("[LLM] No provider configured."); return
     agent_llm = candidates[0] if len(candidates)==1 else llm.FallbackAdapter(llm=candidates,attempt_timeout=4.0,max_retry_per_llm=0,retry_interval=0.2,retry_on_chunk_sent=False)
     logger.info(f"[LLM] Providers: {len(candidates)}")
@@ -342,11 +342,11 @@ async def entrypoint(ctx: JobContext):
     stt_lang  = live_config.get("stt_language") or preset.get("stt_language", "unknown")
     max_turns = int(live_config.get("max_turns", 40))
 
-    # STT: translate mode gives reliable English intent for all Indian languages.
-    # The LLM then knows the intent and responds in the correct language.
-    agent_stt = sarvam.STT(language=stt_lang, model="saaras:v3", mode="translate")
-    agent_tts = sarvam.TTS(target_language_code=tts_lang, model="bulbul:v3", speaker=tts_voice, enable_preprocessing=True)
-    agent_vad = silero.VAD.load(min_speech_duration=0.05, min_silence_duration=0.6)
+    # STT: transcribe mode is 2x faster than translate. Modern LLMs understand native Indian scripts anyway.
+    agent_stt = sarvam.STT(language=stt_lang, model="saaras:v3", mode="transcribe")
+    # TTS: disabled preprocessing for faster time-to-first-byte
+    agent_tts = sarvam.TTS(target_language_code=tts_lang, model="bulbul:v3", speaker=tts_voice, enable_preprocessing=False)
+    agent_vad = silero.VAD.load(min_speech_duration=0.05, min_silence_duration=0.5)
 
     agent = VoiceAssistant(agent_tools=agent_tools, live_config=live_config)
     session = AgentSession(
@@ -355,8 +355,8 @@ async def entrypoint(ctx: JobContext):
         tts=agent_tts,
         vad=agent_vad,
         allow_interruptions=True,
-        min_endpointing_delay=0.5,
-        max_endpointing_delay=3.0,
+        min_endpointing_delay=0.4,
+        max_endpointing_delay=2.5,
     )
     await session.start(room=ctx.room, agent=agent, room_input_options=RoomInputOptions(close_on_disconnect=False))
     logger.info("[AGENT] Session live.")
